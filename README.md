@@ -21,7 +21,7 @@ They speak English and you hear Turkish. You speak Turkish and they hear English
 
 <br>
 
-<img src="docs/panel-and-subtitles.png" alt="The panel and the subtitle bar during a test call (Turkish interface)" width="900">
+<img src="docs/hero.png" alt="Meet Interpreter's panel in a real Google Meet call (Turkish interface)" width="900">
 
 </div>
 

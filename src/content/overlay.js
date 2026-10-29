@@ -71,7 +71,8 @@ function trusted(handler) {
 }
 
 // A scripted click() still flips a checkbox and the browser then fires a trusted change,
-// so an untrusted click is cancelled before it does anything.
+// and a click on a label is passed on to its control by the browser itself. So an
+// untrusted click is cancelled before it does anything, on controls and on labels.
 function blockScriptedClicks(event) {
   if (event.isTrusted) return;
   event.preventDefault();
@@ -87,7 +88,7 @@ function h(tag, props = {}, ...children) {
     else if (value === true) el.setAttribute(key, '');
     else if (value !== false && value != null) el.setAttribute(key, value);
   }
-  if (props.onclick || props.onchange) el.addEventListener('click', blockScriptedClicks, true);
+  if (props.onclick || props.onchange || tag === 'label') el.addEventListener('click', blockScriptedClicks, true);
   for (const child of children) if (child) el.append(child);
   return el;
 }

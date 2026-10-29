@@ -294,8 +294,11 @@ async function mockTranslationTest() {
     // A script in Meet's page cannot tick the consent box or ask for debug copies.
     const scripted = await meet.evaluate(async () => {
       localStorage.setItem('meet-tercuman-debug', '47913');
-      const box = document.getElementById('meet-tercuman-overlay')?.shadowRoot?.querySelector('.clone input');
+      const row = document.getElementById('meet-tercuman-overlay')?.shadowRoot?.querySelector('.clone');
+      const box = row?.querySelector('input');
       box?.click();
+      row?.click();
+      row?.querySelector('span')?.click();
       await new Promise((r) => setTimeout(r, 800));
       localStorage.removeItem('meet-tercuman-debug');
       return { found: Boolean(box), checked: box?.checked };

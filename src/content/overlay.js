@@ -198,9 +198,15 @@ export class Overlay {
     this.inList = h('div', { class: 'list' });
     this.inEmpty = h('div', { class: 'empty', text: t('overlay.inEmpty') });
     this.inLive = h('div', { class: 'live', hidden: true });
+    // Consent is read in the person's own click on the box (or its label). A change event
+    // can follow a scripted click as trusted, and a listener in Meet's page can keep that
+    // click from reaching this one, so change is never used; status() shows the real value.
     this.cloneBox = h('input', {
       type: 'checkbox',
-      onchange: () => this.onOptions({ cloneConsent: this.cloneBox.checked }),
+      onclick: () => {
+        this.consentClickedAt = Date.now();
+        this.onOptions({ cloneConsent: this.cloneBox.checked });
+      },
     });
     this.cloneBox.checked = Boolean(this.hello.cloneConsent);
     this.cloneState = h('span', { class: 'state' });
@@ -345,6 +351,7 @@ export class Overlay {
     if (!status) return;
     this.lastStatus = status;
     this.rec.hidden = !status.recording;
+    if (this.cloneBox && Date.now() - (this.consentClickedAt || 0) > 2000) this.cloneBox.checked = Boolean(status.cloneConsent);
     this.debugBadge.hidden = !status.debugCopies;
     const sttStates = Object.values(status.stt || {}).filter((s) => s !== 'off');
     const healthy = status.page.connected && sttStates.every((s) => s === 'ready');

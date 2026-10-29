@@ -319,12 +319,26 @@ async function mockTranslationTest() {
       const engine = (await sessionState(control))?.engine;
       check(`nor when it stops a click on the ${target} before the panel sees it`, engine?.cloneConsent === false && shown === false, `shown ${shown}, engine ${engine?.cloneConsent}`);
     }
+    // The panel starts as a small button and opens with your own click.
+    const panelState = () =>
+      meet.evaluate(() => {
+        const panel = document.getElementById('meet-tercuman-overlay')?.shadowRoot?.querySelector('.panel');
+        return { small: panel?.classList.contains('min'), width: Math.round(panel?.getBoundingClientRect().width || 0) };
+      });
+    const first = await panelState();
+    check('the panel starts as a small button', first.small === true && first.width > 0 && first.width < 260, JSON.stringify(first));
+    await meet.locator('#meet-tercuman-overlay .headline').click();
+    const opened = await waitFor(async () => (await panelState()).small === false, 2000, 100);
+    check('a click on the button opens the panel', Boolean(opened), JSON.stringify(await panelState()));
     // A real click (trusted input from the browser) still gives and withdraws consent.
     await meet.locator('#meet-tercuman-overlay .clone input').click();
     const granted = await waitFor(async () => (await sessionState(control))?.engine?.cloneConsent === true, 3000, 200);
     await meet.locator('#meet-tercuman-overlay .clone input').click();
     const withdrawn = await waitFor(async () => (await sessionState(control))?.engine?.cloneConsent === false, 3000, 200);
     check('your own click on the box still gives and withdraws consent', Boolean(granted) && Boolean(withdrawn), `${granted} / ${withdrawn}`);
+    await meet.locator('#meet-tercuman-overlay .icon:not(.open):not(.stop)').click();
+    const closed = await waitFor(async () => (await panelState()).small === true, 2000, 100);
+    check('the minimize button makes it small again', Boolean(closed));
     check('a normal build ignores a page request for debug copies', afterScript?.debugCopies === false, String(afterScript?.debugCopies));
     const bar = await waitFor(() => meet.evaluate(() => document.getElementById('meet-tercuman-subtitles')?.shadowRoot?.textContent || ''), 5000, 200);
     check('the translation also shows as subtitles low in the Meet window', (bar || '').includes('Merhaba, bugün görüşmeye katıldığınız için teşekkürler.'), (bar || '').slice(0, 120));

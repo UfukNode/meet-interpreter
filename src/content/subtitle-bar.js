@@ -80,7 +80,7 @@ export class SubtitleBar {
   }
 
   // Meet's own captions sit in the same place; when they are showing, go above them. When
-  // the panel reaches down into the subtitle band, use the wider free side next to it.
+  // the panel is where the centred subtitles would be, use the wider free side next to it.
   place() {
     let bottom = ABOVE_CONTROLS;
     const captions = document.querySelector('[role="region"][aria-label*="aption" i], [role="region"][aria-label*="ltyaz" i]');
@@ -89,9 +89,14 @@ export class SubtitleBar {
     let left = 16;
     let right = window.innerWidth - 16;
     const panel = document.getElementById('meet-tercuman-overlay')?.shadowRoot?.querySelector('.panel')?.getBoundingClientRect();
+    // Measured at full width, as the subtitles would stand centred with nothing in the way.
+    this.bar.style.maxWidth = `${Math.min(960, right - left)}px`;
+    const { width, height } = this.bar.getBoundingClientRect();
+    const middle = window.innerWidth / 2;
     const bandBottom = window.innerHeight - bottom;
-    const bandTop = bandBottom - Math.max(90, this.bar.getBoundingClientRect().height);
-    if (panel?.width && panel.top < bandBottom && panel.bottom > bandTop) {
+    const bandTop = bandBottom - Math.max(90, height);
+    const inTheWay = panel?.width && panel.left < middle + width / 2 + 16 && panel.right > middle - width / 2 - 16;
+    if (inTheWay && panel.top < bandBottom && panel.bottom > bandTop) {
       if (right - panel.right >= panel.left - left) left = panel.right + 16;
       else right = panel.left - 16;
     }

@@ -57,7 +57,7 @@ Görüşmede eklenti en kaliteli servisle başlar (DeepL, sonra Mistral, sonra G
    - Karşı taraf onay verdiyse **Karşı taraf, sesinin klonlanmasına izin verdi** kutusunu işaretle. Yaklaşık 45 saniye konuşmasından sonra çeviriyi onun sesine yakın bir sesle duyarsın.
 3. İstersen **Bu görüşmeyi kaydet** kutusunu işaretle: Meet sekmesinin görüntüsü ve iki tarafın sesi MP4 olarak kaydedilir, görüşme bitince Kayıtlar sayfası açılır. Kayıt yalnızca bu bilgisayarda kalır; karşı tarafa söyle.
 4. **Çeviriyi başlat** de. Kısayol: Alt + Shift + T.
-5. Sayfadaki panelde altyazıları, gecikmeyi ve harcanan kullanımı görürsün. Modları buradan da değiştirebilirsin. Karşı tarafın çevirisi ayrıca Meet penceresinin altında, Meet'in düğmelerinin hemen üstünde film altyazısı gibi görünür (Ayarlar'da "Altyazıyı Meet penceresinin altında göster" ile kapatılabilir).
+5. Meet penceresinin sol altında küçük bir "Meet Tercüman" düğmesi belirir, istediğin yere sürükleyebilirsin. Tıklayınca panel açılır: altyazıları, gecikmeyi ve harcanan kullanımı orada görürsün, modları da oradan değiştirebilirsin. Düğmede ünlem işareti çıkarsa paneli açıp uyarıyı oku. Karşı tarafın çevirisi ayrıca Meet penceresinin altında, Meet'in düğmelerinin hemen üstünde film altyazısı gibi görünür (Ayarlar'da "Altyazıyı Meet penceresinin altında göster" ile kapatılabilir).
 6. Sesli çeviride yalnızca çeviriyi duyarsın, karşı tarafın asıl sesi kapalıdır (Ayarlar'daki iki kaydırıcıyla kısık olarak geri açabilirsin). Sadece altyazı modunda ve çeviri kapalıyken karşı tarafı normal duyarsın.
 7. **Test sesi gönder** karşı tarafa kısa bir çan sesi yollar: duyuyorlarsa çevirin de onlara ulaşır.
 
@@ -83,7 +83,7 @@ Görüşmede eklenti en kaliteli servisle başlar (DeepL, sonra Mistral, sonra G
 | "Ücretsiz çeviri ilk kullanımda hazırlanmalı" | Ayarlar > Çeviri'de "Ücretsiz çeviriyi hazırla"ya bas ya da "Çeviriyi başlat"a tekrar bas. |
 | "Meet sekmesini bir kez yenileyin" | Eklenti, sekme açıldıktan sonra kurulmuş. F5 ile yenile. |
 | "Eklentinin mikrofon izni yok" | Ayarlar, Mikrofon iznini ver. |
-| Karşı taraf beni duymuyor | Meet'te mikrofonun açık mı? Panelde "Meet sayfasına bir kez tıklayın" yazıyorsa sayfaya tıkla. "Test sesi gönder" ile dene. |
+| Karşı taraf beni duymuyor | Meet'te mikrofonun açık mı? Küçük düğmede ünlem varsa paneli aç; "Meet sayfasına bir kez tıklayın" yazıyorsa sayfaya tıkla. "Test sesi gönder" ile dene. |
 | Kendi çevirimi geri duyuyorum | Kulaklık kullan ya da Ayarlar'da Hoparlör modunu aç. |
 | Gecikme fazla | Claude modelini Haiku 5.5 yap, sessizlik süresini 0,5 sn seç. |
 | Ses tanıma yeniden bağlanıyor | İnternet bağlantısını kontrol et. Eklenti kendisi yeniden bağlanır; birkaç saniyelik kesintide aradaki konuşma kaybolmaz. |

@@ -28,8 +28,16 @@ const CSS = `
 .icon:hover { background: rgba(255,255,255,0.1); color: #fff; }
 .icon.stop:hover { background: rgba(234,67,53,0.25); color: #fff; }
 .body { padding: 4px 12px 6px; max-height: 46vh; overflow: auto; }
-.panel.min .body, .panel.min .bottom { display: none; }
 .bottom { padding: 0 12px 10px; }
+.open { display: none; }
+.alert { width: 16px; height: 16px; border-radius: 50%; background: #fbbc04; color: #202124; font-size: 11px; font-weight: 700; line-height: 16px; text-align: center; }
+.alert.bad { background: #ea4335; color: #fff; }
+.panel:not(.min) .alert { display: none; }
+.panel.min { width: auto; border-radius: 999px; }
+.panel.min .header { padding: 6px 6px 6px 12px; cursor: pointer; background: none; }
+.panel.min .header:hover { background: rgba(255,255,255,0.06); }
+.panel.min .body, .panel.min .bottom, .panel.min .meta, .panel.min .icon:not(.open) { display: none; }
+.panel.min .open { display: inline-block; }
 section { padding: 8px 0; border-top: 1px solid rgba(255,255,255,0.07); }
 section:first-child { border-top: 0; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
@@ -120,11 +128,12 @@ function segmented(options, value, onChange) {
 }
 
 export class Overlay {
-  constructor({ hello, onOptions, onChime, onStop }) {
+  constructor({ hello, onOptions, onChime, onStop, onMove }) {
     this.hello = hello;
     this.onOptions = onOptions;
     this.onChime = onChime;
     this.onStop = onStop;
+    this.onMove = onMove;
     this.items = { in: [], out: [] };
     this.incomingMode = hello.incomingMode;
     this.outgoingMode = hello.outgoingMode;
@@ -146,6 +155,7 @@ export class Overlay {
     this.meta = h('span', { class: 'meta', text: t('overlay.connecting') });
     this.rec = h('span', { class: 'rec', text: `● ${t('overlay.recording')}`, hidden: true });
     this.debugBadge = h('span', { class: 'rec debug', text: t('overlay.debug'), title: t('overlay.debugTitle'), hidden: true });
+    this.alert = h('span', { class: 'alert', text: '!', hidden: true });
     const header = h(
       'div',
       { class: 'header' },
@@ -153,12 +163,19 @@ export class Overlay {
       h('span', { class: 'headline', text: hello.diagnostic ? t('overlay.diagTitle') : t('app.name') }),
       this.rec,
       this.debugBadge,
+      this.alert,
       this.meta,
-      h('button', { class: 'icon', title: t('overlay.minimize'), text: '−', onclick: () => this.panel.classList.toggle('min') }),
+      h('button', { class: 'icon open', title: t('overlay.open'), text: '▴', onclick: () => this.setOpen(true) }),
+      h('button', { class: 'icon', title: t('overlay.minimize'), text: '−', onclick: () => this.setOpen(false) }),
       h('button', { class: 'icon stop', title: t('overlay.stop'), text: '■', onclick: () => this.onStop() }),
     );
     this.body = h('div', { class: 'body' });
     this.panel = h('div', { class: 'panel' }, header, this.body);
+    // It starts small, as one button, since the subtitles low in the Meet window carry the
+    // translation; a click opens it. It starts open when it holds what nothing else shows:
+    // the connection test, or subtitles only with the subtitle bar turned off.
+    const onlyHere = hello.diagnostic || (hello.incomingMode === 'text' && !hello.subtitleBar);
+    this.panel.classList.toggle('min', !onlyHere);
     root.append(this.panel);
 
     if (hello.diagnostic) this.buildDiagnostic();
@@ -179,6 +196,10 @@ export class Overlay {
     this.makeDraggable(header);
     this.applyMode();
     (document.body || document.documentElement).append(this.host);
+    this.fit = () => this.keepInView();
+    window.addEventListener('resize', this.fit);
+    this.sizeWatch = new ResizeObserver(this.fit);
+    this.sizeWatch.observe(this.panel);
   }
 
   buildTranslation(mine, theirs) {
@@ -376,39 +397,64 @@ export class Overlay {
     if (!status.diagnostic && status.outgoingMode === 'voice' && status.page.connected && status.page.unattached) {
       notices.push([t('overlay.notice.unattached'), true]);
     } else if (!status.diagnostic && status.outgoingMode === 'voice' && status.page.connected && status.page.muted) {
-      notices.push([t('overlay.notice.muted'), false]);
+      notices.push([t('overlay.notice.muted'), false, true]);
     }
     if (sttStates.includes('reconnecting')) notices.push([t('overlay.notice.reconnecting'), false]);
     for (const warning of status.warnings || []) notices.push([warning, false]);
     this.notices.replaceChildren(...notices.map(([text, bad]) => h('div', { class: `notice${bad ? ' bad' : ''}`, text })));
+
+    // While the panel is small, a mark on the button says there is something to read, and a
+    // new problem opens the panel. Being muted needs no mark: Meet shows that itself.
+    const marked = notices.filter(([, , quiet]) => !quiet);
+    const problems = marked.filter(([, bad]) => bad).map(([text]) => text).join('\n');
+    this.alert.hidden = marked.length === 0;
+    this.alert.classList.toggle('bad', Boolean(problems));
+    this.alert.title = marked.map(([text]) => text).join('\n');
+    if (problems && problems !== this.problems) this.setOpen(true);
+    this.problems = problems;
   }
 
   setDisconnected() {
     this.dot.className = 'dot bad';
     this.meta.textContent = t('overlay.disconnected');
+    this.alert.hidden = false;
+    this.alert.classList.add('bad');
+    this.alert.title = t('overlay.disconnected');
   }
 
+  setOpen(open) {
+    this.panel.classList.toggle('min', !open);
+  }
+
+  // The panel hangs from its bottom left corner, so the small button stays where it was put
+  // and the panel opens upwards from it. A press on the button without a drag opens it.
   makeDraggable(handle) {
     const KEY = 'meet-tercuman-overlay-pos';
     try {
       const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
-      if (saved) this.place(saved.left, saved.top);
+      if (saved?.bottom != null) this.spot = { left: saved.left, bottom: saved.bottom };
     } catch {
       // position is a convenience only
     }
     handle.addEventListener('pointerdown', (event) => {
       if (event.target.closest('button')) return;
       const rect = this.panel.getBoundingClientRect();
-      const dx = event.clientX - rect.left;
-      const dy = event.clientY - rect.top;
+      const { clientX: x, clientY: y } = event;
+      let moved = false;
       handle.setPointerCapture(event.pointerId);
-      const move = (e) => this.place(e.clientX - dx, e.clientY - dy);
-      const up = () => {
+      const move = (e) => {
+        moved ||= Math.hypot(e.clientX - x, e.clientY - y) > 4;
+        if (moved) this.place(rect.left + e.clientX - x, window.innerHeight - rect.bottom - (e.clientY - y));
+      };
+      const up = (e) => {
         handle.removeEventListener('pointermove', move);
         handle.removeEventListener('pointerup', up);
+        if (!moved) {
+          if (e.isTrusted && this.panel.classList.contains('min')) this.setOpen(true);
+          return;
+        }
         try {
-          const r = this.panel.getBoundingClientRect();
-          localStorage.setItem(KEY, JSON.stringify({ left: r.left, top: r.top }));
+          localStorage.setItem(KEY, JSON.stringify(this.spot));
         } catch {
           // ignore
         }
@@ -418,15 +464,24 @@ export class Overlay {
     });
   }
 
-  place(left, top) {
-    const maxLeft = window.innerWidth - 120;
-    const maxTop = window.innerHeight - 40;
-    this.panel.style.left = `${Math.max(0, Math.min(maxLeft, left))}px`;
-    this.panel.style.top = `${Math.max(0, Math.min(maxTop, top))}px`;
-    this.panel.style.bottom = 'auto';
+  place(left, bottom) {
+    this.spot = { left, bottom };
+    this.keepInView();
+  }
+
+  // Opening, new subtitles or a smaller window can push the panel past an edge. It is moved
+  // in only while that lasts: made small again, the button is back in its own place.
+  keepInView() {
+    const spot = this.spot || { left: 16, bottom: 96 };
+    const { width, height } = this.panel.getBoundingClientRect();
+    this.panel.style.left = `${Math.max(8, Math.min(window.innerWidth - width - 8, spot.left))}px`;
+    this.panel.style.bottom = `${Math.max(8, Math.min(window.innerHeight - height - 8, spot.bottom))}px`;
+    this.onMove?.();
   }
 
   destroy() {
+    window.removeEventListener('resize', this.fit);
+    this.sizeWatch.disconnect();
     this.host.remove();
   }
 }

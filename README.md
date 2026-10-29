@@ -35,7 +35,7 @@ They speak English and you hear Turkish. You speak Turkish and they hear English
 - In voice mode you hear only the translation; their own voice is muted. In subtitles-only mode and with translation off you hear them normally.
 - Subtitles like a film's, low in the Meet window above Meet's controls: the translation in large type with the original under it. They move above Meet's own captions when those are on, and never take a click.
 - Your own voice clone, recorded on the settings page. The other person's voice is cloned only after you confirm they agreed, and the clone is deleted when the call ends.
-- A panel with both sides' subtitles, the live delay and a usage counter with an estimated cost.
+- A panel with both sides' subtitles, the mode switches, the live delay and a usage counter with an estimated cost. It starts as a small button low on the left of the Meet window, opens with a click and can be dragged anywhere. A mark on the button shows when there is a warning to read.
 - Optional call recording: the Meet tab's picture with both sides' audio, saved as MP4 on this computer only.
 - Echo guard, a speaker mode for calls without headphones, automatic reconnects, and Meet's microphone followed automatically.
 

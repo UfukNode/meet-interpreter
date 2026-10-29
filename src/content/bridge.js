@@ -102,6 +102,8 @@ function showOverlay() {
       onOptions: (options) => state.enginePort?.postMessage({ type: 'ui', action: 'options', options }),
       onChime: () => state.enginePort?.postMessage({ type: 'ui', action: 'chime' }),
       onStop: () => chrome.runtime.sendMessage({ type: 'stop' }).catch(() => endSession()),
+      // The subtitles step aside when the panel opens, grows or is dragged over them.
+      onMove: () => state.subtitles?.place(),
     });
   };
   if (document.body) mount();

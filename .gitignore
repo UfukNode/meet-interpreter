@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+test/e2e/fixtures/
+test/e2e/out/
+test/api/out/
+.DS_Store
+test/meet/out/

@@ -1,0 +1,7 @@
+{
+  "extName": { "message": "Meet Interpreter" },
+  "extDescription": {
+    "message": "Live two-way speech translation for Google Meet: hear the other person in your language, and let them hear you in theirs."
+  },
+  "cmdToggle": { "message": "Start or stop translation" }
+}

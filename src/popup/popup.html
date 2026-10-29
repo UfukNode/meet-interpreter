@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title data-i18n="app.name">Meet Interpreter</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <img src="icons/icon48.png" alt="" width="28" height="28" />
+      <div class="title">
+        <strong data-i18n="app.name">Meet Interpreter</strong>
+        <span id="pair">English ↔ Turkish</span>
+      </div>
+      <div class="lang" id="uiLanguage" role="radiogroup" data-i18n-title="lang.switch">
+        <button data-value="en" role="radio">EN</button>
+        <button data-value="tr" role="radio">TR</button>
+      </div>
+      <button id="settings" class="ghost" data-i18n="popup.settings">Settings</button>
+    </header>
+
+    <div id="notice" class="notice" hidden></div>
+
+    <section class="modes">
+      <div class="field">
+        <span class="field-label" id="inLabel">When they speak</span>
+        <div class="seg" id="incoming" role="radiogroup" aria-labelledby="inLabel">
+          <button data-value="voice" role="radio" data-i18n="mode.voice">Voice translation</button>
+          <button data-value="text" role="radio" data-i18n="mode.text">Subtitles only</button>
+          <button data-value="off" role="radio" data-i18n="mode.off">Off</button>
+        </div>
+        <span class="hint" id="inHint"></span>
+      </div>
+      <div class="field">
+        <span class="field-label" id="outLabel">When I speak</span>
+        <div class="seg" id="outgoing" role="radiogroup" aria-labelledby="outLabel">
+          <button data-value="voice" role="radio" data-i18n="mode.voice">Voice translation</button>
+          <button data-value="off" role="radio" data-i18n="mode.off">Off</button>
+        </div>
+        <span class="hint" id="outHint"></span>
+      </div>
+      <label class="check" id="consentRow">
+        <input type="checkbox" id="consent" />
+        <span>
+          <span data-i18n="popup.consent">They agreed to have their voice cloned</span>
+          <small data-i18n="popup.consentHint">If unticked, a stock voice is used. The clone is deleted when the call ends.</small>
+        </span>
+      </label>
+      <label class="check" id="recordRow">
+        <input type="checkbox" id="record" />
+        <span>
+          <span data-i18n="popup.record">Record this call (picture and both sides' audio)</span>
+          <small data-i18n="popup.recordHint">The recording stays on this computer. Tell the other side you are recording.</small>
+        </span>
+      </label>
+    </section>
+
+    <button id="primary" class="primary" data-i18n="popup.start">Start translation</button>
+    <div class="secondary">
+      <button id="test" class="ghost" data-i18n="popup.test">Connection test (no keys)</button>
+      <button id="chime" class="ghost" hidden data-i18n="popup.chime">Send test sound</button>
+    </div>
+
+    <section id="live" class="live" hidden>
+      <div class="live-row"><span data-i18n="popup.status">Status</span><b id="liveState"></b></div>
+      <div class="live-row"><span data-i18n="popup.latency">Delay</span><b id="liveLatency">-</b></div>
+      <div class="live-row"><span data-i18n="popup.thisCall">This call</span><b id="liveUsage">-</b></div>
+    </section>
+
+    <footer><span data-i18n="popup.shortcut">Shortcut:</span> <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd></footer>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

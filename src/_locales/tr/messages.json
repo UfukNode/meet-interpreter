@@ -1,0 +1,7 @@
+{
+  "extName": { "message": "Meet Tercüman" },
+  "extDescription": {
+    "message": "Google Meet görüşmelerinde canlı sesli çeviri: karşı tarafı kendi dilinizde duyun, o da sizi kendi dilinde duysun."
+  },
+  "cmdToggle": { "message": "Çeviriyi başlat ya da durdur" }
+}

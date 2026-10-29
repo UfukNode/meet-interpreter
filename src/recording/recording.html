@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title data-i18n="rec.title">Meet Interpreter recordings</title>
+    <link rel="stylesheet" href="recording.css" />
+  </head>
+  <body>
+    <main>
+      <header class="page-head">
+        <img src="icons/icon48.png" alt="" width="36" height="36" />
+        <div class="page-title">
+          <h1 data-i18n="rec.title">Recordings</h1>
+          <p class="hint" data-i18n="rec.hint">The Meet tab's picture, what you heard and what was sent to them.</p>
+        </div>
+      </header>
+      <section id="current" class="card" hidden>
+        <video id="player" controls playsinline></video>
+        <div class="row">
+          <span id="info" class="info"></span>
+          <div class="actions">
+            <a id="download" class="button primary" data-i18n="rec.download">Download</a>
+            <button id="delete" type="button" data-i18n="rec.delete">Delete</button>
+          </div>
+        </div>
+      </section>
+      <p id="empty" class="card empty" hidden data-i18n="rec.empty">No recordings yet.</p>
+      <section id="othersBox" class="card" hidden>
+        <h2 data-i18n="rec.others">Earlier recordings</h2>
+        <ul id="others"></ul>
+      </section>
+    </main>
+    <script type="module" src="recording.js"></script>
+  </body>
+</html>

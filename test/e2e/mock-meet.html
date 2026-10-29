@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Mock Meet call</title>
+  </head>
+  <body>
+    <h1>Mock Meet call</h1>
+    <p>Served at https://meet.google.com/ by the e2e test. It does what Meet does with audio:
+      sends the microphone through an RTCPeerConnection and plays the counterpart.</p>
+    <button id="micBtn" data-is-muted="false" aria-label="Turn off microphone (ctrl + d)">mic</button>
+    <audio id="remote" src="/__fixtures/remote.wav" loop></audio>
+    <script>
+      window.__test = null;
+      (async () => {
+        // Processing off: noise suppression would fade the steady test tone.
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        });
+        const mic = stream.getAudioTracks()[0];
+        const pc1 = new RTCPeerConnection();
+        const pc2 = new RTCPeerConnection();
+        pc1.onicecandidate = (e) => e.candidate && pc2.addIceCandidate(e.candidate);
+        pc2.onicecandidate = (e) => e.candidate && pc1.addIceCandidate(e.candidate);
+        const received = new Promise((resolve) => {
+          pc2.ontrack = (e) => resolve(e.streams[0] || new MediaStream([e.track]));
+        });
+        const sender = pc1.addTrack(mic, stream);
+        const offer = await pc1.createOffer();
+        await pc1.setLocalDescription(offer);
+        await pc2.setRemoteDescription(offer);
+        const answer = await pc2.createAnswer();
+        await pc2.setLocalDescription(answer);
+        await pc1.setRemoteDescription(answer);
+        const remoteStream = await received;
+
+        // Remote WebRTC audio only flows into Web Audio while a media element plays it.
+        const sink = new Audio();
+        sink.srcObject = remoteStream;
+        sink.muted = true;
+        sink.play().catch(() => {});
+        const ctx = new AudioContext();
+        const source = ctx.createMediaStreamSource(remoteStream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 2048;
+        source.connect(analyser);
+        const buf = new Float32Array(analyser.fftSize);
+
+        // Record what the far end receives, so a test can save and inspect it.
+        const recorder = new MediaRecorder(remoteStream, { mimeType: 'audio/webm;codecs=opus' });
+        const chunks = [];
+        recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+        recorder.start(1000);
+
+        window.__test = {
+          mic,
+          sender,
+          level() {
+            analyser.getFloatTimeDomainData(buf);
+            let sum = 0;
+            for (const v of buf) sum += v * v;
+            return Math.sqrt(sum / buf.length);
+          },
+          senderShowsMic: () => sender.track === mic,
+          mute(on) {
+            document.getElementById('micBtn').setAttribute('data-is-muted', String(on));
+            mic.enabled = !on;
+          },
+          async recording() {
+            recorder.requestData();
+            await new Promise((r) => setTimeout(r, 300));
+            const blob = new Blob(chunks, { type: 'audio/webm' });
+            const bytes = new Uint8Array(await blob.arrayBuffer());
+            let binary = '';
+            for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+            return btoa(binary);
+          },
+        };
+        document.getElementById('remote').play().catch(() => {});
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title data-i18n="opt.title">Meet Interpreter settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <header class="page-head">
+        <img src="icons/icon128.png" alt="" width="48" height="48" />
+        <div class="page-title">
+          <h1 data-i18n="app.name">Meet Interpreter</h1>
+          <p data-i18n="opt.tagline">Live speech translation for Google Meet calls. You hear the other person in your language, and they hear you in theirs.</p>
+        </div>
+        <div class="lang" id="uiLanguage" role="radiogroup" data-i18n-title="lang.switch">
+          <button type="button" data-value="en" role="radio">EN</button>
+          <button type="button" data-value="tr" role="radio">TR</button>
+        </div>
+      </header>
+
+      <section class="card" id="setup">
+        <h2 data-i18n="opt.setup">Setup status</h2>
+        <ul class="checklist">
+          <li id="check-elevenlabs" data-i18n="opt.check.elevenlabs">ElevenLabs API key</li>
+          <li id="check-anthropic">Anthropic API key (or free translation)</li>
+          <li id="check-mic" data-i18n="opt.check.mic">Microphone permission</li>
+          <li id="check-voice" data-i18n="opt.check.voice">Your own voice (optional, recommended)</li>
+        </ul>
+        <p class="hint" data-i18n="opt.setupHint">When everything is ready, join a Meet call, click the extension icon in the toolbar and press "Start translation". Use headphones.</p>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="opt.keys.title">1. API keys</h2>
+        <p class="hint" data-i18n="opt.keys.hint">Keys are stored only in this browser and are sent straight to the service they belong to. There is no server in between.</p>
+        <label class="field">
+          <span data-i18n="opt.keys.elevenlabs">ElevenLabs API key</span>
+          <input type="password" id="elevenLabsKey" autocomplete="off" spellcheck="false" />
+        </label>
+        <p class="hint" data-i18n="opt.keys.elevenlabsHint">elevenlabs.io, Developers, API Keys.</p>
+        <label class="field">
+          <span data-i18n="opt.keys.anthropic">Anthropic API key</span>
+          <input type="password" id="anthropicKey" autocomplete="off" spellcheck="false" />
+        </label>
+        <p class="hint" data-i18n="opt.keys.anthropicHint">console.anthropic.com, API Keys.</p>
+        <div class="actions">
+          <button id="showKeys" type="button" data-i18n="opt.keys.show">Show keys</button>
+          <button id="testKeys" type="button" class="primary" data-i18n="opt.keys.test">Test keys</button>
+        </div>
+        <p class="result" id="keyResult" role="status"></p>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="opt.mic.title">2. Microphone and headphones</h2>
+        <p data-i18n="opt.mic.text">Give the extension permission once so it can hear you.</p>
+        <div class="actions">
+          <button id="grantMic" type="button" class="primary" data-i18n="opt.mic.grant">Allow microphone</button>
+          <span id="micState" class="pill"></span>
+        </div>
+        <div class="grid2">
+          <label class="field">
+            <span data-i18n="opt.mic.device">Microphone</span>
+            <select id="micDeviceLabel"><option value="" data-i18n="opt.mic.sameAsMeet">Same as Meet (recommended)</option></select>
+          </label>
+          <label class="field">
+            <span data-i18n="opt.mic.output">Where you hear the translation</span>
+            <select id="outputDeviceLabel"><option value="" data-i18n="opt.mic.systemDefault">System default</option></select>
+          </label>
+        </div>
+        <p class="hint" data-i18n="opt.mic.hint">Use headphones.</p>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="opt.lang.title">3. Languages</h2>
+        <div class="grid2">
+          <label class="field">
+            <span data-i18n="opt.lang.mine">My language</span>
+            <select id="myLanguage"></select>
+          </label>
+          <label class="field">
+            <span data-i18n="opt.lang.theirs">Their language</span>
+            <select id="theirLanguage"></select>
+          </label>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="opt.voice.title">4. My voice</h2>
+        <p data-i18n="opt.voice.text">They hear you in their language in this voice.</p>
+        <div class="current">
+          <span><span data-i18n="opt.voice.selected">Selected voice:</span> <b id="myVoiceName"></b></span>
+          <button id="previewMine" type="button" data-i18n="opt.voice.preview">Listen</button>
+        </div>
+        <details class="recorder" open>
+          <summary data-i18n="opt.voice.recordTitle">Create my voice by recording</summary>
+          <p class="reading" id="readingText"></p>
+          <div class="actions">
+            <button id="recordBtn" type="button" class="primary" data-i18n="opt.voice.record">Start recording</button>
+            <span id="recordTime" class="timer">0:00</span>
+            <button id="cloneRecording" type="button" disabled data-i18n="opt.voice.clone">Create my voice from this recording</button>
+          </div>
+          <audio id="recordPreview" controls hidden></audio>
+        </details>
+        <div class="grid2">
+          <label class="field">
+            <span data-i18n="opt.voice.upload">Or upload audio files (mp3, wav, m4a)</span>
+            <input type="file" id="voiceFiles" accept="audio/*" multiple />
+          </label>
+          <label class="field">
+            <span data-i18n="opt.voice.pick">Or pick a voice from your account</span>
+            <select id="myVoiceSelect"><option value="" data-i18n="opt.voice.needKey">Enter the ElevenLabs key first</option></select>
+          </label>
+        </div>
+        <p class="result" id="myVoiceResult" role="status"></p>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="opt.their.title">5. Their voice</h2>
+        <div class="grid2">
+          <label class="field">
+            <span data-i18n="opt.their.default">Default voice</span>
+            <select id="theirVoiceSelect"><option value="" data-i18n="opt.voice.needKey">Enter the ElevenLabs key first</option></select>
+          </label>
+          <div class="field">
+            <span>&nbsp;</span>
+            <button id="previewTheirs" type="button" data-i18n="opt.voice.preview">Listen</button>
+          </div>
+        </div>
+        <label class="check">
+          <input type="checkbox" id="offerTheirClone" />
+          <span data-i18n="opt.their.offer">Offer to clone their own voice during calls</span>
+        </label>
+        <p class="hint" data-i18n="opt.their.hint">A clone is made only with their consent.</p>
+        <div class="grid2">
+          <label class="field">
+            <span data-i18n="opt.their.seconds">Speech to collect for the clone</span>
+            <select id="cloneSeconds"></select>
+          </label>
+        </div>
+        <label class="check">
+          <input type="checkbox" id="deleteCloneAfter" />
+          <span data-i18n="opt.their.delete">Delete the clone when the call ends (recommended)</span>
+        </label>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="opt.tr.title">6. Translation</h2>
+        <label class="field">
+          <span data-i18n="opt.tr.model">Translation model</span>
+          <select id="claudeModel"></select>
+        </label>
+        <p class="hint" id="claudeHint" data-i18n="opt.tr.claudeHint">If the delay feels long, choose Claude Haiku 5.5.</p>
+        <div id="freeBox" class="free" hidden>
+          <p class="hint" data-i18n="opt.tr.freeHint">Free translation works without any key.</p>
+          <div class="actions">
+            <button id="prepareFree" type="button" class="primary" hidden data-i18n="opt.tr.prepare">Prepare free translation</button>
+            <span id="freeState" class="pill"></span>
+          </div>
+          <details class="free-keys" id="freeKeys">
+            <summary data-i18n="opt.tr.freeKeys">Improve translation quality (optional, free)</summary>
+            <p class="hint" data-i18n="opt.tr.freeKeysHint">These services have free plans.</p>
+            <label class="field">
+              <span data-i18n="opt.tr.deeplKey">DeepL API Free key</span>
+              <input type="password" id="deeplKey" autocomplete="off" spellcheck="false" />
+            </label>
+            <p class="hint" data-i18n="opt.tr.deeplHint">deepl.com/pro-api, "DeepL API Free" plan.</p>
+            <label class="field">
+              <span data-i18n="opt.tr.mistralKey">Mistral API key</span>
+              <input type="password" id="mistralKey" autocomplete="off" spellcheck="false" />
+            </label>
+            <p class="hint" data-i18n="opt.tr.mistralHint">console.mistral.ai, API Keys.</p>
+            <label class="field">
+              <span data-i18n="opt.tr.groqKey">Groq API key</span>
+              <input type="password" id="groqKey" autocomplete="off" spellcheck="false" />
+            </label>
+            <p class="hint" data-i18n="opt.tr.groqHint">console.groq.com, API Keys.</p>
+            <div class="actions">
+              <button id="testFreeKeys" type="button" data-i18n="opt.tr.testFree">Test these keys</button>
+            </div>
+            <p class="result" id="freeKeyResult" role="status"></p>
+          </details>
+        </div>
+        <label class="field">
+          <span data-i18n="opt.tr.context">About the meeting (optional)</span>
+          <textarea id="meetingContext" rows="3" data-i18n-placeholder="opt.tr.contextPlaceholder"></textarea>
+        </label>
+        <label class="field">
+          <span data-i18n="opt.tr.terms">Special terms, separated by commas (optional)</span>
+          <input id="keyterms" placeholder="Fungo, cZAMA, launchpad" />
+        </label>
+        <p class="hint" data-i18n="opt.tr.termsHint">Terms go to both speech recognition and translation.</p>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="opt.audio.title">7. Audio settings</h2>
+        <div class="grid2">
+          <label class="field">
+            <span data-i18n="opt.audio.model">Voice model</span>
+            <select id="ttsModel"></select>
+          </label>
+          <label class="field">
+            <span data-i18n="opt.audio.silence">Silence that ends a phrase</span>
+            <select id="vadSilenceSecs">
+              <option value="0.5" data-i18n="opt.audio.silence05">0.5 s (fastest)</option>
+              <option value="0.7" data-i18n="opt.audio.silence07">0.7 s (recommended)</option>
+              <option value="1" data-i18n="opt.audio.silence10">1 s</option>
+              <option value="1.5" data-i18n="opt.audio.silence15">1.5 s (for long sentences)</option>
+            </select>
+          </label>
+        </div>
+        <div class="sliders">
+          <label class="slider"><span data-i18n="opt.audio.translationVolume">Translation volume</span><input type="range" id="translationVolume" min="0" max="1" step="0.05" /><output></output></label>
+          <label class="slider"><span data-i18n="opt.audio.originalVolume">Their original voice</span><input type="range" id="originalVolume" min="0" max="1" step="0.05" /><output></output></label>
+          <label class="slider"><span data-i18n="opt.audio.duckVolume">Original voice (while a translation plays)</span><input type="range" id="duckVolume" min="0" max="0.5" step="0.01" /><output></output></label>
+          <label class="slider"><span data-i18n="opt.audio.monitorVolume">Hear my own translation</span><input type="range" id="monitorVolume" min="0" max="1" step="0.05" /><output></output></label>
+          <label class="slider"><span data-i18n="opt.audio.stability">Voice stability</span><input type="range" id="stability" min="0" max="1" step="0.05" /><output></output></label>
+          <label class="slider"><span data-i18n="opt.audio.similarity">Similarity to the voice</span><input type="range" id="similarity" min="0" max="1" step="0.05" /><output></output></label>
+        </div>
+        <label class="check">
+          <input type="checkbox" id="halfDuplex" />
+          <span data-i18n="opt.audio.halfDuplex">Speaker mode</span>
+        </label>
+        <label class="check">
+          <input type="checkbox" id="subtitleBar" />
+          <span data-i18n="opt.audio.subtitleBar">Show subtitles at the bottom of the Meet window</span>
+        </label>
+        <label class="check">
+          <input type="checkbox" id="showOverlay" />
+          <span data-i18n="opt.audio.overlay">Show the subtitle panel on the Meet page</span>
+        </label>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="opt.cost.title">Cost</h2>
+        <p data-i18n="opt.cost.text">During a call the panel shows usage and an estimated amount.</p>
+        <ul class="prices">
+          <li data-i18n="opt.cost.stt">Speech recognition</li>
+          <li data-i18n="opt.cost.tts">Speech</li>
+          <li data-i18n="opt.cost.claude">Translation</li>
+          <li data-i18n="opt.cost.free">Free translation: $0</li>
+        </ul>
+        <p class="hint" data-i18n="opt.cost.hint">"Subtitles only" saves the most.</p>
+      </section>
+    </main>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

@@ -1,0 +1,262 @@
+:root {
+  --bg: #ffffff;
+  --surface: #f3f4f7;
+  --text: #1c1f26;
+  --muted: #5f6573;
+  --border: #dfe2e8;
+  --accent: #3b5bdb;
+  --accent-text: #ffffff;
+  --ok: #1e7f45;
+  --warn-bg: #fff4d6;
+  --warn-text: #6b4e00;
+  --bad-bg: #fde5e3;
+  --bad-text: #8c1d14;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17191e;
+    --surface: #23262d;
+    --text: #e9ebf0;
+    --muted: #a1a7b3;
+    --border: #343843;
+    --accent: #8fa8ff;
+    --accent-text: #11131a;
+    --ok: #5fd08f;
+    --warn-bg: #3a3214;
+    --warn-text: #f5dc8b;
+    --bad-bg: #3d1c1a;
+    --bad-text: #f6aea9;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  width: 340px;
+  padding: 14px;
+  font: 13px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.title {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.title span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 6px 10px;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.ghost {
+  background: transparent;
+}
+
+.lang {
+  display: flex;
+  padding: 2px;
+  gap: 2px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.lang button {
+  border: 0;
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 6px;
+}
+
+.lang button[aria-checked='true'] {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.primary {
+  width: 100%;
+  padding: 10px;
+  font-weight: 600;
+  font-size: 14px;
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: transparent;
+}
+
+.primary.stop {
+  background: var(--bad-text);
+  color: var(--bg);
+}
+
+.notice {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+
+.notice.bad {
+  background: var(--bad-bg);
+  color: var(--bad-text);
+}
+
+.notice button {
+  margin-top: 6px;
+}
+
+.modes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.field-label {
+  font-weight: 600;
+}
+
+.seg {
+  display: flex;
+  padding: 3px;
+  gap: 3px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.seg button {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  border: 0;
+  background: transparent;
+  padding: 6px 6px;
+  color: var(--muted);
+}
+
+.seg button[aria-checked='true'] {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.check input {
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+
+.check small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.secondary {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.secondary button {
+  flex: 1;
+  font-size: 12px;
+}
+
+.live {
+  margin-top: 12px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.live-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.live-row span {
+  color: var(--muted);
+}
+
+.live-row b {
+  text-align: right;
+  font-weight: 600;
+}
+
+footer {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+kbd {
+  font: 11px ui-monospace, Menlo, monospace;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+[hidden] {
+  display: none !important;
+}

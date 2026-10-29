@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "build:debug": "node scripts/build.mjs --debug",
     "watch": "node scripts/build.mjs --watch",
     "test": "node --test test/unit/*.test.mjs",
     "test:e2e": "node scripts/build.mjs && node test/e2e/run.mjs",

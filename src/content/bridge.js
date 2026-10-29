@@ -119,9 +119,13 @@ function rebuildOverlay() {
   if (state.last.status) state.overlay.status(state.last.status);
 }
 
-// Testing on this computer: `localStorage['meet-tercuman-debug'] = '<port>'` on the Meet
-// page makes the engine copy its audio and transcripts to http://127.0.0.1:<port>.
+// Testing on this computer, in a debug build only (`npm run build:debug`):
+// `localStorage['meet-tercuman-debug'] = '<port>'` on the Meet page makes the engine copy
+// its audio and transcripts to http://127.0.0.1:<port>.
+const DEBUG_BUILD = typeof __DEBUG_SINK__ !== 'undefined' && __DEBUG_SINK__;
+
 function askForDebugCopies() {
+  if (!DEBUG_BUILD) return;
   let port = null;
   try {
     port = localStorage.getItem('meet-tercuman-debug');

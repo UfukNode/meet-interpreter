@@ -291,6 +291,18 @@ async function mockTranslationTest() {
 
     const incoming = await waitFor(async () => done((await readCaptions(meet)).incoming), 30000, 300);
     check('the counterpart is transcribed and shown in Turkish', incoming?.translation === 'Merhaba, bugün görüşmeye katıldığınız için teşekkürler.', JSON.stringify(incoming));
+    // A script in Meet's page cannot tick the consent box or ask for debug copies.
+    const scripted = await meet.evaluate(async () => {
+      localStorage.setItem('meet-tercuman-debug', '47913');
+      const box = document.getElementById('meet-tercuman-overlay')?.shadowRoot?.querySelector('.clone input');
+      box?.click();
+      await new Promise((r) => setTimeout(r, 800));
+      localStorage.removeItem('meet-tercuman-debug');
+      return { found: Boolean(box), checked: box?.checked };
+    });
+    const afterScript = (await sessionState(control))?.engine;
+    check('a page script cannot give clone consent', scripted.found && scripted.checked === false && afterScript?.cloneConsent === false, JSON.stringify(scripted));
+    check('a normal build ignores a page request for debug copies', afterScript?.debugCopies === false, String(afterScript?.debugCopies));
     const bar = await waitFor(() => meet.evaluate(() => document.getElementById('meet-tercuman-subtitles')?.shadowRoot?.textContent || ''), 5000, 200);
     check('the translation also shows as subtitles low in the Meet window', (bar || '').includes('Merhaba, bugün görüşmeye katıldığınız için teşekkürler.'), (bar || '').slice(0, 120));
     const outgoing = await waitFor(async () => done((await readCaptions(meet)).outgoing), 30000, 300);

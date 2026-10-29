@@ -1,8 +1,9 @@
-// Receives the extension's opt-in debug copies (see src/offscreen/debug-sink.js):
+// Receives the extension's opt-in debug copies (see src/offscreen/debug-sink.js), which
+// only a debug build has (`npm run build:debug`, then reload the extension):
 //
 //   node test/meet/debug-sink-server.mjs [port]      (default 8787)
 //
-// then, in the Meet tab's console: localStorage['meet-tercuman-debug'] = '8787'
+// then, in the Meet tab's console: localStorage['meet-tercuman-debug'] = '<port>'
 // Each translation session lands in test/meet/out/debug/<session>/: in.pcm and out.pcm
 // (16 kHz mono 16-bit, exactly what speech recognition got), events.jsonl (partials,
 // commits, captions, chunk timing) and recording.mp4 (the call recording).

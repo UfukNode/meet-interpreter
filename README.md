@@ -131,7 +131,7 @@ node test/meet/mock-call-demo.mjs   # both directions with the real ElevenLabs, 
 
 - The end-to-end test needs no keys: besides the connection checks it runs a full translation round trip against a local stand-in for the ElevenLabs and Anthropic APIs (`test/e2e/mock-api.mjs`, reached through a local proxy). With keys in `.env` it repeats the round trip against the real APIs.
 - Test speech is made with the macOS `say` command and ffmpeg, so the audio tests run on macOS.
-- For a real call there is an opt-in debug copy: with `localStorage['meet-tercuman-debug'] = '<port>'` set on the Meet page and `node test/meet/debug-sink-server.mjs <port>` running, the extension copies the exact audio it sends to speech recognition, the transcripts and the recording to `127.0.0.1`.
+- For a real call there is a debug copy, compiled in only by `npm run build:debug`: with `localStorage['meet-tercuman-debug'] = '<port>'` set on the Meet page and `node test/meet/debug-sink-server.mjs <port>` running, the extension copies the exact audio it sends to speech recognition, the transcripts and the recording to `127.0.0.1`, and the panel shows a DEBUG badge. The normal build ignores the flag.
 
 ---
 
@@ -143,7 +143,8 @@ node test/meet/mock-call-demo.mjs   # both directions with the real ElevenLabs, 
 - Nothing reaches the call while Meet shows you as muted, while translation to them is off, or before the call has started.
 - The other person's voice is cloned only after you tick the consent box, and the clone is deleted after the call unless you change that setting.
 - Recordings stay in the extension's storage on your computer until you save or delete them.
-- The debug copy is off unless you set its flag on the Meet page, and it only ever sends to `127.0.0.1`.
+- The panel's controls answer only your own clicks and keys: a script in Meet's page cannot tick the consent box or switch a mode.
+- The debug copy exists only in a debug build (`npm run build:debug`), shows a DEBUG badge while it runs, and only ever sends to `127.0.0.1`.
 
 ---
 

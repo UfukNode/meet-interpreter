@@ -22,6 +22,7 @@ const CSS = `
 .dot.ok { background: #34a853; } .dot.wait { background: #fbbc04; } .dot.bad { background: #ea4335; }
 .headline { font-weight: 600; }
 .rec { color: #fff; background: #d93025; border-radius: 6px; padding: 1px 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
+.rec.debug { background: #f29900; color: #202124; }
 .meta { flex: 1; color: #9aa0a6; font-size: 12px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .icon { all: unset; cursor: pointer; width: 24px; height: 24px; border-radius: 6px; text-align: center; line-height: 24px; color: #bdc1c6; font-size: 14px; }
 .icon:hover { background: rgba(255,255,255,0.1); color: #fff; }
@@ -61,15 +62,32 @@ section:first-child { border-top: 0; }
 [hidden] { display: none !important; }
 `;
 
+// The panel's shadow root is open, so a script in Meet's page can reach its controls,
+// but it cannot make a trusted event. Only the person's own clicks and keys count.
+function trusted(handler) {
+  return (event) => {
+    if (event.isTrusted) handler(event);
+  };
+}
+
+// A scripted click() still flips a checkbox and the browser then fires a trusted change,
+// so an untrusted click is cancelled before it does anything.
+function blockScriptedClicks(event) {
+  if (event.isTrusted) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}
+
 function h(tag, props = {}, ...children) {
   const el = document.createElement(tag);
   for (const [key, value] of Object.entries(props)) {
     if (key === 'class') el.className = value;
     else if (key === 'text') el.textContent = value;
-    else if (key.startsWith('on')) el.addEventListener(key.slice(2), value);
+    else if (key.startsWith('on')) el.addEventListener(key.slice(2), trusted(value));
     else if (value === true) el.setAttribute(key, '');
     else if (value !== false && value != null) el.setAttribute(key, value);
   }
+  if (props.onclick || props.onchange) el.addEventListener('click', blockScriptedClicks, true);
   for (const child of children) if (child) el.append(child);
   return el;
 }
@@ -126,12 +144,14 @@ export class Overlay {
     this.dot = h('span', { class: 'dot wait' });
     this.meta = h('span', { class: 'meta', text: t('overlay.connecting') });
     this.rec = h('span', { class: 'rec', text: `● ${t('overlay.recording')}`, hidden: true });
+    this.debugBadge = h('span', { class: 'rec debug', text: t('overlay.debug'), title: t('overlay.debugTitle'), hidden: true });
     const header = h(
       'div',
       { class: 'header' },
       this.dot,
       h('span', { class: 'headline', text: hello.diagnostic ? t('overlay.diagTitle') : t('app.name') }),
       this.rec,
+      this.debugBadge,
       this.meta,
       h('button', { class: 'icon', title: t('overlay.minimize'), text: '−', onclick: () => this.panel.classList.toggle('min') }),
       h('button', { class: 'icon stop', title: t('overlay.stop'), text: '■', onclick: () => this.onStop() }),
@@ -324,6 +344,7 @@ export class Overlay {
     if (!status) return;
     this.lastStatus = status;
     this.rec.hidden = !status.recording;
+    this.debugBadge.hidden = !status.debugCopies;
     const sttStates = Object.values(status.stt || {}).filter((s) => s !== 'off');
     const healthy = status.page.connected && sttStates.every((s) => s === 'ready');
     const connecting = sttStates.some((s) => s === 'connecting' || s === 'reconnecting');

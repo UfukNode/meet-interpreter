@@ -23,6 +23,10 @@ import { DirectionPipeline, History, Speaker } from './pipeline.js';
 import { CloneCollector } from './voice-clone.js';
 import { saveChunk, saveRecording, recordingChunks } from '../shared/recordings.js';
 import { DebugSink, debugSinkUrl } from './debug-sink.js';
+
+// The debug copy is compiled in only by `npm run build:debug`; a normal build ignores
+// the page's request for it.
+const DEBUG_BUILD = typeof __DEBUG_SINK__ !== 'undefined' && __DEBUG_SINK__;
 import { setLanguage, t, joinNames, locale } from '../shared/i18n.js';
 
 class UserError extends Error {
@@ -586,6 +590,7 @@ class Session {
 
   onTabMessage(m) {
     if (m?.type === 'debug-sink') {
+      if (!DEBUG_BUILD) return;
       const url = debugSinkUrl(m.port);
       if (url && !this.debugSink) {
         this.debugSink = new DebugSink(url);
@@ -779,6 +784,7 @@ class Session {
       outgoingMode: this.outgoingMode,
       cloneConsent: this.cloneConsent,
       recording: this.recorder?.state === 'recording',
+      debugCopies: Boolean(this.debugSink),
       stt: { ...this.stt },
       page: {
         connected: Boolean(this.tabPort),

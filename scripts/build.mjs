@@ -8,6 +8,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const src = path.join(root, 'src');
 const dist = path.join(root, 'dist');
 const watch = process.argv.includes('--watch');
+// `--debug` compiles in the opt-in local debug copy (src/offscreen/debug-sink.js).
+const debug = process.argv.includes('--debug');
 
 const common = {
   bundle: true,
@@ -16,6 +18,7 @@ const common = {
   logLevel: 'info',
   sourcemap: watch ? 'inline' : false,
   minify: false,
+  define: { __DEBUG_SINK__: String(debug) },
 };
 
 const modules = {

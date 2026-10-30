@@ -132,8 +132,9 @@ function scribe(ws, req, stats, faults) {
   });
 }
 
-// The free services answer in their own formats; `faults` makes one fail on purpose.
-async function free(req, res, url, host, stats, faults) {
+// The free services answer in their own formats; `faults` makes one fail on purpose, and a
+// `translator` (see claude) answers DeepL's requests instead of the fixed table.
+async function free(req, res, url, host, stats, faults, translator) {
   if (req.method === 'GET') {
     if (url.pathname === '/v2/usage') return json(res, { character_count: 0, character_limit: 500000 });
     if (url.pathname.endsWith('/models')) return json(res, { object: 'list', data: [] });
@@ -142,7 +143,9 @@ async function free(req, res, url, host, stats, faults) {
   if (host === 'api-free.deepl.com' && url.pathname === '/v2/translate') {
     stats.free.push({ service: 'deepl', text: body.text?.[0], target: body.target_lang, context: body.context || '' });
     if (faults.deepl) return json(res, { message: 'Quota for this billing period has been exceeded' }, faults.deepl);
-    return json(res, { translations: [{ detected_source_language: body.source_lang, text: translate(body.text?.[0] || '') }] });
+    const text = body.text?.[0] || '';
+    const answer = translator ? await translator(text, String(body.source_lang).toLowerCase(), String(body.target_lang).slice(0, 2).toLowerCase()) : translate(text);
+    return json(res, { translations: [{ detected_source_language: body.source_lang, text: answer }] });
   }
   if (url.pathname.endsWith('/chat/completions')) {
     const service = host === 'api.mistral.ai' ? 'mistral' : 'groq';
@@ -180,7 +183,7 @@ async function route(req, res, stats, faults, options = {}) {
     }
     if (req.method === 'POST' && url.pathname === '/v1/messages') return claude(req, res, stats, faults, options.translator);
   }
-  if (host === 'api-free.deepl.com' || host === 'api.mistral.ai' || host === 'api.groq.com') return free(req, res, url, host, stats, faults);
+  if (host === 'api-free.deepl.com' || host === 'api.mistral.ai' || host === 'api.groq.com') return free(req, res, url, host, stats, faults, options.translator);
   json(res, { error: 'not mocked' }, 404);
 }
 

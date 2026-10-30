@@ -8,7 +8,7 @@
     <h1>Mock Meet call</h1>
     <p>Served at https://meet.google.com/ by the e2e test. It does what Meet does with audio:
       sends the microphone through an RTCPeerConnection and plays the counterpart.</p>
-    <button id="micBtn" data-is-muted="false" aria-label="Turn off microphone (ctrl + d)">mic</button>
+    <button id="micBtn" data-is-muted="false" aria-label="Turn off microphone">mic</button>
     <audio id="remote" src="/__fixtures/remote.wav" loop></audio>
     <script>
       window.__test = null;
@@ -65,6 +65,15 @@
           mute(on) {
             document.getElementById('micBtn').setAttribute('data-is-muted', String(on));
             mic.enabled = !on;
+          },
+          // What leaving does in Meet: the call's connections close, the microphone is
+          // released and the other side goes quiet.
+          leave() {
+            pc1.close();
+            pc2.close();
+            mic.stop();
+            document.getElementById('remote').pause();
+            document.getElementById('micBtn').remove();
           },
           async recording() {
             recorder.requestData();

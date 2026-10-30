@@ -57,8 +57,8 @@ async function request(apiKey, path, init = {}) {
   return res;
 }
 
-export async function fetchScribeToken(apiKey) {
-  const res = await request(apiKey, '/v1/single-use-token/realtime_scribe', { method: 'POST' });
+export async function fetchScribeToken(apiKey, { signal } = {}) {
+  const res = await request(apiKey, '/v1/single-use-token/realtime_scribe', { method: 'POST', signal });
   const { token } = await res.json();
   return token;
 }
@@ -101,6 +101,7 @@ export async function speechStream(
 
 export function describeElevenLabsError(err) {
   if (isNetworkError(err)) return t('el.network');
+  if (err?.name === 'TimeoutError') return t('el.stalled');
   if (!(err instanceof ElevenLabsError)) return err?.message || String(err);
   if (err.status === 401) {
     if (err.code === 'quota_exceeded') return t('el.quota');

@@ -40,7 +40,9 @@ const CSS = `
 .panel.min .open { display: inline-block; }
 section { padding: 8px 0; border-top: 1px solid rgba(255,255,255,0.07); }
 section:first-child { border-top: 0; }
-.row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.empty.ended { margin-top: 8px; }
+/* The mode switches stay in view while the subtitles under them scroll. */
+.row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; position: sticky; top: 0; z-index: 1; padding: 2px 0; background: #181a1f; }
 .label { color: #bdc1c6; font-size: 12px; font-weight: 600; }
 .seg { display: inline-flex; background: rgba(255,255,255,0.07); border-radius: 8px; padding: 2px; }
 .seg-btn { all: unset; cursor: pointer; padding: 3px 9px; border-radius: 6px; font-size: 12px; color: #bdc1c6; }
@@ -128,11 +130,12 @@ function segmented(options, value, onChange) {
 }
 
 export class Overlay {
-  constructor({ hello, onOptions, onChime, onStop, onMove }) {
+  constructor({ hello, onOptions, onChime, onStop, onClose, onMove }) {
     this.hello = hello;
     this.onOptions = onOptions;
     this.onChime = onChime;
     this.onStop = onStop;
+    this.onClose = onClose;
     this.onMove = onMove;
     this.items = { in: [], out: [] };
     this.incomingMode = hello.incomingMode;
@@ -156,6 +159,8 @@ export class Overlay {
     this.rec = h('span', { class: 'rec', text: `● ${t('overlay.recording')}`, hidden: true });
     this.debugBadge = h('span', { class: 'rec debug', text: t('overlay.debug'), title: t('overlay.debugTitle'), hidden: true });
     this.alert = h('span', { class: 'alert', text: '!', hidden: true });
+    // Once the session has stopped by itself, the stop button only closes the panel.
+    this.stopButton = h('button', { class: 'icon stop', title: t('overlay.stop'), text: '■', onclick: () => (this.isEnded ? this.onClose() : this.onStop()) });
     const header = h(
       'div',
       { class: 'header' },
@@ -167,7 +172,7 @@ export class Overlay {
       this.meta,
       h('button', { class: 'icon open', title: t('overlay.open'), text: '▴', onclick: () => this.setOpen(true) }),
       h('button', { class: 'icon', title: t('overlay.minimize'), text: '−', onclick: () => this.setOpen(false) }),
-      h('button', { class: 'icon stop', title: t('overlay.stop'), text: '■', onclick: () => this.onStop() }),
+      this.stopButton,
     );
     this.body = h('div', { class: 'body' });
     this.panel = h('div', { class: 'panel' }, header, this.body);
@@ -184,14 +189,13 @@ export class Overlay {
     // Notices and the footer stay visible below the scrolling subtitles.
     this.notices = h('div', {});
     this.usage = h('span', { class: 'usage' });
-    this.panel.append(
-      h(
-        'div',
-        { class: 'bottom' },
-        this.notices,
-        h('div', { class: 'footer' }, this.usage, h('button', { class: 'btn', text: t('popup.chime'), title: t('overlay.chimeTitle'), onclick: () => this.onChime() })),
-      ),
+    this.bottom = h(
+      'div',
+      { class: 'bottom' },
+      this.notices,
+      h('div', { class: 'footer' }, this.usage, h('button', { class: 'btn', text: t('popup.chime'), title: t('overlay.chimeTitle'), onclick: () => this.onChime() })),
     );
+    this.panel.append(this.bottom);
 
     this.makeDraggable(header);
     this.applyMode();
@@ -414,6 +418,26 @@ export class Overlay {
     this.problems = problems;
   }
 
+  // The session stopped by itself (an error mid-call): the panel says why and stays, open,
+  // until it is closed.
+  ended(error) {
+    this.isEnded = true;
+    this.dot.className = 'dot bad';
+    this.meta.textContent = t('overlay.stopped');
+    this.rec.hidden = true;
+    this.debugBadge.hidden = true;
+    this.alert.hidden = false;
+    this.alert.classList.add('bad');
+    this.alert.title = error;
+    this.stopButton.textContent = '×';
+    this.stopButton.title = t('overlay.close');
+    this.body.replaceChildren(
+      h('section', {}, h('div', { class: 'notice bad', text: error }), h('div', { class: 'empty ended', text: t('overlay.startAgain') })),
+    );
+    this.bottom.hidden = true;
+    this.setOpen(true);
+  }
+
   setDisconnected() {
     this.dot.className = 'dot bad';
     this.meta.textContent = t('overlay.disconnected');
@@ -449,8 +473,9 @@ export class Overlay {
       const up = (e) => {
         handle.removeEventListener('pointermove', move);
         handle.removeEventListener('pointerup', up);
+        handle.removeEventListener('pointercancel', up);
         if (!moved) {
-          if (e.isTrusted && this.panel.classList.contains('min')) this.setOpen(true);
+          if (e.type === 'pointerup' && e.isTrusted && this.panel.classList.contains('min')) this.setOpen(true);
           return;
         }
         try {
@@ -461,6 +486,7 @@ export class Overlay {
       };
       handle.addEventListener('pointermove', move);
       handle.addEventListener('pointerup', up);
+      handle.addEventListener('pointercancel', up);
     });
   }
 

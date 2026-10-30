@@ -51,6 +51,37 @@ test('a connection that drops after audio was heard is not repeated', async () =
   assert.equal(calls.length, 1);
 });
 
+test('a request that never answers is given up and tried again', async () => {
+  let calls = 0;
+  globalThis.fetch = (_url, init) => {
+    calls += 1;
+    if (calls === 2) return Promise.resolve(new Response(pcm(4, 5)));
+    return new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true }));
+  };
+  assert.deepEqual(await collect(synthesize({ ...request, stallMs: 30 })), [4, 5]);
+  assert.equal(calls, 2);
+});
+
+test('speech that stops coming after some was heard ends with a timeout, not a hang', async () => {
+  globalThis.fetch = async (_url, init) =>
+    new Response(
+      new ReadableStream({
+        start(c) {
+          c.enqueue(pcm(1, 2));
+          init.signal.addEventListener('abort', () => c.error(init.signal.reason), { once: true });
+        },
+        pull: () => new Promise(() => {}),
+      }),
+    );
+  const heard = [];
+  await assert.rejects(async () => {
+    for await (const chunk of synthesize({ ...request, stallMs: 30 })) heard.push(...chunk);
+  }, (err) => err.name === 'TimeoutError');
+  assert.deepEqual(heard, [1, 2]);
+  setLanguage('en');
+  assert.equal(describeElevenLabsError(new DOMException('x', 'TimeoutError')), 'ElevenLabs stopped answering.');
+});
+
 test('an aborted request is not retried', async () => {
   const controller = new AbortController();
   controller.abort();

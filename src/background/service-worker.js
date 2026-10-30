@@ -99,11 +99,12 @@ async function startSession({ tabId, streamId, options = {} }) {
   }
 }
 
-async function stopSession(reason = 'user') {
+// `error` goes to the Meet tab, whose panel then stays to say why the translation stopped.
+async function stopSession(reason = 'user', error = null) {
   const state = await getState();
   if (await hasOffscreen()) await toEngine({ type: 'stop', reason }).catch(() => {});
   await closeOffscreen();
-  if (state.tabId) chrome.tabs.sendMessage(state.tabId, { type: 'session-ended' }).catch(() => {});
+  if (state.tabId) chrome.tabs.sendMessage(state.tabId, { type: 'session-ended', error }).catch(() => {});
   if (reason === 'restart') return;
   if (state.status !== 'error' || reason === 'user') await setState({ ...IDLE });
 }
@@ -164,9 +165,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return false;
     case 'engine-failed':
       (async () => {
-        await stopSession('error');
+        await stopSession('error', msg.error);
         await setState({ status: 'error', error: msg.error, tabId: null, engine: null });
       })();
+      return false;
+    case 'call-ended':
+      getState().then((s) => {
+        if (s.status === 'running') stopSession('call-ended');
+      });
       return false;
     default:
       return false;
@@ -184,10 +190,13 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   if ((await getState()).tabId === tabId) stopSession('tab-closed');
 });
 
-chrome.tabs.onUpdated.addListener(async (tabId, info) => {
-  if (!info.url) return;
+// Leaving Meet in the same tab ends the session, or the capture would go on listening to
+// whatever plays there next. The extension may see the address of Meet pages only, so a
+// tab whose address it cannot see has left Meet.
+chrome.tabs.onUpdated.addListener(async (tabId, _info, tab) => {
   const state = await getState();
-  if (state.tabId === tabId && !info.url.startsWith(MEET_PREFIX)) stopSession('left-meet');
+  if (state.tabId !== tabId || state.status !== 'running') return;
+  if (!tab.url?.startsWith(MEET_PREFIX)) stopSession('left-meet');
 });
 
 // Keyboard shortcut: also counts as invoking the extension, which tab capture needs.

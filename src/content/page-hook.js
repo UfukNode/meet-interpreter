@@ -231,15 +231,17 @@ import { base64ToInt16 } from '../shared/pcm.js';
     return parts.join(' ');
   }
 
-  // Meet's microphone button carries data-is-muted. Its label names the shortcut
-  // (ctrl/cmd + d) in every UI language, which tells it apart from the camera button.
+  // Meet's microphone button carries data-is-muted. Its label used to name the shortcut
+  // (ctrl/cmd + d) in every UI language; now only its tooltip does (October 2026), so the
+  // word for microphone tells it apart from the camera button.
+  const MIC_WORD = /micr|mikr|микр|μικρ|ميكروفون|माइक|マイク|麦克风|麥克風|마이크/i;
   function domMuted() {
     const candidates = document.querySelectorAll('[data-is-muted]');
     let fallback = null;
     for (const el of candidates) {
       const label = labelOf(el);
       if (/\+\s*d\b/i.test(label)) return el.getAttribute('data-is-muted') === 'true';
-      if (fallback === null && /micro|mikrofon/i.test(label)) fallback = el.getAttribute('data-is-muted') === 'true';
+      if (fallback === null && MIC_WORD.test(label)) fallback = el.getAttribute('data-is-muted') === 'true';
     }
     return fallback;
   }

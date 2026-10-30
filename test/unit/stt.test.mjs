@@ -217,3 +217,37 @@ test('the server repeating a committed segment as a partial does not commit it a
   assert.deepEqual(seen.partial, ['Hello. Thank you for the invitation.', 'Could there be']);
   stt.stop();
 });
+
+test('a token request that gets no answer is tried again', async () => {
+  let calls = 0;
+  globalThis.fetch = (_url, init) => {
+    calls += 1;
+    if (calls > 1) return Promise.resolve({ ok: true, json: async () => ({ token: 'single-use' }), text: async () => '' });
+    return new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true }));
+  };
+  const { stt } = client({ tokenTimeoutMs: 30 });
+  stt.start();
+  await tick(600);
+  assert.equal(calls, 2);
+  assert.equal(FakeSocket.all.length, 1);
+  stt.stop();
+});
+
+test('a stop and a new start while the token is on its way open one connection, not two', async () => {
+  let release;
+  const gate = new Promise((r) => (release = r));
+  globalThis.fetch = async () => {
+    await gate;
+    return { ok: true, json: async () => ({ token: 'single-use' }), text: async () => '' };
+  };
+  const { stt } = client();
+  stt.start();
+  await tick();
+  stt.stop();
+  stt.start();
+  await tick();
+  release();
+  await tick(20);
+  assert.equal(FakeSocket.all.length, 1);
+  stt.stop();
+});

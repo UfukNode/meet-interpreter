@@ -66,6 +66,11 @@ function describeSttFatal(err, cause) {
 }
 
 const MUTE_IDLE_MS = 20000;
+const START_TIMEOUT_MS = 20000;
+// After the call has been joined, this long without a connected call (left, or kicked
+// out) ends the translation, so nothing keeps listening and billing on Meet's goodbye
+// screen. Long enough for a reload and a click on Join to bring the call back.
+const CALL_GONE_MS = 30000;
 
 let session = null;
 
@@ -178,7 +183,9 @@ class Session {
     this.tabNode = this.captureNode((m) => this.onTabChunk(m));
     tabSource.connect(this.tabNode);
     this.tabStream.getAudioTracks()[0]?.addEventListener('ended', () => {
-      this.fail(new UserError(t('err.tabEnded'), 'tab-ended'));
+      // Closing the tab ends the capture too, and the service worker stops the session for
+      // that at once. Only a capture that ends while the tab is still there is a failure.
+      setTimeout(() => this.fail(new UserError(t('err.tabEnded'), 'tab-ended')), 1500);
     });
 
     this.translationGain = this.ctx.createGain();
@@ -276,7 +283,9 @@ class Session {
     this.translator = this.createTranslator(s);
 
     // Check the keys before the call depends on them, so a bad key shows up now.
-    await Promise.all([this.verifyTranslator(), this.resolveVoices()]);
+    await withTimeout(Promise.all([this.verifyTranslator(), this.resolveVoices()]), START_TIMEOUT_MS).catch((err) => {
+      throw err.message === 'timeout' ? new UserError(t('err.startTimeout'), 'timeout') : err;
+    });
 
     this.history = new History(12);
     this.early = { in: new EarlySentences(), out: new EarlySentences() };
@@ -395,6 +404,19 @@ class Session {
       onFatal: (err, cause) => this.fail(new UserError(describeSttFatal(err, cause), 'stt')),
       log,
     });
+  }
+
+  restartStt() {
+    if (this.stopped) return;
+    const keyterms = parseKeyterms(this.settings.keyterms);
+    this.sttIn.stop();
+    this.sttOut.stop();
+    this.early.in.reset();
+    this.early.out.reset();
+    this.sttIn = this.createStt('in', this.settings.theirLanguage, keyterms);
+    this.sttOut = this.createStt('out', this.settings.myLanguage, keyterms);
+    this.ensureStt('in', this.incomingMode !== 'off');
+    this.ensureStt('out', this.outgoingMode === 'voice' && this.canSendOutgoing());
   }
 
   ensureStt(dir, on) {
@@ -618,9 +640,23 @@ class Session {
       if (wasOpen && !isOpen) this.onOutgoingClosed();
       if (!wasOpen && isOpen) this.onOutgoingOpened();
       if (m.state.micLabel) this.followMeetMic(m.state.micLabel);
+      this.watchCall(Boolean(m.state.inCall));
     } else if (m?.type === 'ui') {
       if (m.action === 'options') this.setOptions(m.options || {});
       else if (m.action === 'chime') this.sendChime();
+    }
+  }
+
+  watchCall(inCall) {
+    if (inCall) {
+      this.joined = true;
+      clearTimeout(this.callGoneTimer);
+      this.callGoneTimer = 0;
+    } else if (this.joined && !this.callGoneTimer) {
+      this.callGoneTimer = setTimeout(() => {
+        log('info', 'the call ended, stopping');
+        chrome.runtime.sendMessage({ type: 'call-ended' }).catch(() => {});
+      }, CALL_GONE_MS);
     }
   }
 
@@ -629,6 +665,8 @@ class Session {
   onOutgoingClosed() {
     this.outgoing?.flush();
     this.early?.out.reset();
+    // Words still on the live line were never sent; they would stay there until I spoke again.
+    this.caption('out', { phase: 'partial', source: '' });
     clearTimeout(this.muteTimer);
     this.muteTimer = setTimeout(() => {
       if (!this.canSendOutgoing()) this.ensureStt('out', false);
@@ -647,6 +685,7 @@ class Session {
       this.incomingMode = options.incomingMode;
       this.incoming?.setMode(this.incomingMode);
       this.ensureStt('in', this.incomingMode !== 'off');
+      if (this.incomingMode === 'off') this.caption('in', { phase: 'partial', source: '' });
       if (this.incomingMode !== 'voice') this.stopCloneCollection();
       else if (this.cloneConsent) this.startClone();
       this.updateDucking();
@@ -679,18 +718,37 @@ class Session {
     this.translationGain?.gain.setTargetAtTime(next.translationVolume, this.ctx.currentTime, 0.05);
     this.monitorGain?.gain.setTargetAtTime(next.monitorVolume, this.ctx.currentTime, 0.05);
     this.updateDucking();
-    if (this.translator && isFreeTranslation(next) !== isFreeTranslation(prev) && !missingKeys(next).length) {
-      // Switched between Claude and free translation mid-call.
+    const switched = isFreeTranslation(next) !== isFreeTranslation(prev);
+    const newKey = !isFreeTranslation(next) && next.anthropicKey !== prev.anthropicKey;
+    if (this.translator && (switched || newKey) && !missingKeys(next).length) {
+      // Switched between Claude and free translation mid-call, or a new Anthropic key.
       this.translator = this.createTranslator(next);
       if (this.incoming) this.incoming.translator = this.translator;
       if (this.outgoing) this.outgoing.translator = this.translator;
     } else {
       this.translator?.update({
         model: next.claudeModel,
+        myLanguage: next.myLanguage,
+        theirLanguage: next.theirLanguage,
         meetingContext: next.meetingContext,
         keyterms: parseKeyterms(next.keyterms),
         keys: freeKeys(next),
       });
+    }
+    // A new ElevenLabs key is used from the next connection on (speech takes it right away).
+    for (const stt of [this.sttIn, this.sttOut]) if (stt) stt.apiKey = next.elevenLabsKey;
+    const pairChanged = next.myLanguage !== prev.myLanguage || next.theirLanguage !== prev.theirLanguage;
+    if (pairChanged && this.incoming) {
+      // A new language pair mid-call: both sides are heard and translated in it from now on.
+      Object.assign(this.incoming, { from: next.theirLanguage, to: next.myLanguage });
+      Object.assign(this.outgoing, { from: next.myLanguage, to: next.theirLanguage });
+      this.postTab({ type: 'pair', myLanguage: next.myLanguage, theirLanguage: next.theirLanguage });
+    }
+    if (this.sttIn && (pairChanged || next.vadSilenceSecs !== prev.vadSilenceSecs || next.keyterms !== prev.keyterms)) {
+      // Speech recognition takes these when it connects. Typing in the glossary saves on
+      // every pause, so the new connections wait until the typing is over.
+      clearTimeout(this.sttRestartTimer);
+      this.sttRestartTimer = setTimeout(() => this.restartStt(), pairChanged ? 0 : 1500);
     }
     if (next.myVoiceId && next.myVoiceId !== prev.myVoiceId) {
       this.myVoiceId = next.myVoiceId;
@@ -883,6 +941,8 @@ class Session {
     });
     clearInterval(this.statusTimer);
     clearTimeout(this.muteTimer);
+    clearTimeout(this.callGoneTimer);
+    clearTimeout(this.sttRestartTimer);
     this.debugSink?.close();
     this.incoming?.flush();
     this.outgoing?.flush();

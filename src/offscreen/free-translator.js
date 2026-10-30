@@ -219,7 +219,9 @@ export class FreeTranslator {
     this.localTranslators = new Map();
   }
 
-  update({ keys, meetingContext, keyterms } = {}) {
+  update({ keys, myLanguage, theirLanguage, meetingContext, keyterms } = {}) {
+    if (myLanguage) this.myLanguage = myLanguage;
+    if (theirLanguage) this.theirLanguage = theirLanguage;
     if (keys) {
       for (const name of FREE_KEY_NAMES) {
         const value = String(keys[name] || '').trim();

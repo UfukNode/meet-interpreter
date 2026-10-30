@@ -50,9 +50,10 @@ function tone(seconds, freq = 330, rate = 24000) {
   return buf;
 }
 
-async function speech(req, res, url, stats) {
+async function speech(req, res, url, stats, faults) {
   const body = JSON.parse((await readBody(req)).toString() || '{}');
   stats.tts.push({ voice: url.pathname.split('/')[3], format: url.searchParams.get('output_format'), ...body });
+  if (faults.tts) return json(res, { detail: { status: 'quota_exceeded', message: 'This request exceeds your quota.' } }, faults.tts);
   res.writeHead(200, { 'content-type': 'audio/pcm' });
   const audio = tone(0.8);
   const step = Math.floor(audio.length / 4 / 2) * 2 + 1; // odd sizes exercise sample re-alignment
@@ -67,12 +68,13 @@ const codeOf = (english) => LANGUAGES.find((l) => l.english === english)?.code;
 
 // `translator(text, from, to)`, when given, answers instead of the fixed table (the live
 // Meet test plugs Chrome's own translator in here).
-async function claude(req, res, stats, translator) {
+async function claude(req, res, stats, faults, translator) {
   const body = JSON.parse((await readBody(req)).toString() || '{}');
   const user = body.messages?.at(-1)?.content || '';
   const utterance = (String(user).match(/<utterance>\n([\s\S]*?)\n<\/utterance>/) || [])[1] || '';
-  stats.claude.push({ model: body.model, effort: body.output_config?.effort, fallbacks: body.fallbacks, beta: req.headers['anthropic-beta'] || '', utterance });
   const pair = String(user).match(/Utterance to interpret, (\w+) to (\w+):/);
+  stats.claude.push({ model: body.model, effort: body.output_config?.effort, fallbacks: body.fallbacks, beta: req.headers['anthropic-beta'] || '', utterance, pair: pair ? `${pair[1]} to ${pair[2]}` : '' });
+  if (faults.claude) return json(res, { type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } }, faults.claude);
   const answer = translator && pair ? await translator(utterance, codeOf(pair[1]), codeOf(pair[2])) : translate(utterance);
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
   const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -92,11 +94,14 @@ async function claude(req, res, stats, translator) {
   res.end();
 }
 
-function scribe(ws, req, stats) {
+// `faults.stt`, when set to a server message type such as quota_exceeded, is sent the
+// next time audio arrives, the way Scribe ends a session for good.
+function scribe(ws, req, stats, faults) {
   const url = new URL(req.url, 'wss://api.elevenlabs.io');
   const language = url.searchParams.get('language_code');
-  const session = { language, params: Object.fromEntries(url.searchParams), voiced: 0, chunks: 0, commits: 0 };
+  const session = { language, params: Object.fromEntries(url.searchParams), voiced: 0, chunks: 0, commits: 0, open: true };
   stats.stt.push(session);
+  ws.on('close', () => (session.open = false));
   if (url.searchParams.get('token') !== 'mock-token') {
     ws.send(JSON.stringify({ message_type: 'auth_error', error: 'bad token' }));
     ws.close();
@@ -107,6 +112,11 @@ function scribe(ws, req, stats) {
   ws.on('message', (raw) => {
     const msg = JSON.parse(raw.toString());
     if (msg.message_type !== 'input_audio_chunk') return;
+    if (faults.stt) {
+      ws.send(JSON.stringify({ message_type: faults.stt, error: 'Mock: the session ends here' }));
+      ws.close();
+      return;
+    }
     session.chunks += 1;
     const pcm = Buffer.from(msg.audio_base_64, 'base64');
     let peak = 0;
@@ -160,7 +170,7 @@ async function route(req, res, stats, faults, options = {}) {
         ],
       });
     }
-    if (req.method === 'POST' && /^\/v1\/text-to-speech\/[^/]+\/stream$/.test(url.pathname)) return speech(req, res, url, stats);
+    if (req.method === 'POST' && /^\/v1\/text-to-speech\/[^/]+\/stream$/.test(url.pathname)) return speech(req, res, url, stats, faults);
     if (req.method === 'POST' && url.pathname === '/v1/voices/add') return json(res, { voice_id: 'mock-clone', requires_verification: false });
     if (req.method === 'DELETE' && url.pathname.startsWith('/v1/voices/')) return json(res, { status: 'ok' });
   }
@@ -168,7 +178,7 @@ async function route(req, res, stats, faults, options = {}) {
     if (req.method === 'GET' && url.pathname.startsWith('/v1/models/')) {
       return json(res, { type: 'model', id: url.pathname.split('/').pop(), display_name: 'Mock', created_at: '2026-01-01T00:00:00Z' });
     }
-    if (req.method === 'POST' && url.pathname === '/v1/messages') return claude(req, res, stats, options.translator);
+    if (req.method === 'POST' && url.pathname === '/v1/messages') return claude(req, res, stats, faults, options.translator);
   }
   if (host === 'api-free.deepl.com' || host === 'api.mistral.ai' || host === 'api.groq.com') return free(req, res, url, host, stats, faults);
   json(res, { error: 'not mocked' }, 404);
@@ -182,7 +192,7 @@ export async function startMockApi({ cert, key, passthrough = [], mockOnly = nul
   const real = new Set(passthrough);
   const options = { translator };
   const stats = { requests: [], stt: [], tts: [], claude: [], free: [] };
-  const faults = { deepl: 0, mistral: 0, groq: 0 };
+  const faults = { deepl: 0, mistral: 0, groq: 0, tts: 0, claude: 0, stt: null };
   const api = https.createServer({ cert, key }, (req, res) => {
     route(req, res, stats, faults, options).catch((err) => {
       res.writeHead(500);
@@ -190,7 +200,7 @@ export async function startMockApi({ cert, key, passthrough = [], mockOnly = nul
     });
   });
   const wss = new WebSocketServer({ server: api, path: '/v1/speech-to-text/realtime' });
-  wss.on('connection', (ws, req) => scribe(ws, req, stats));
+  wss.on('connection', (ws, req) => scribe(ws, req, stats, faults));
   const proxy = http.createServer((_req, res) => {
     res.writeHead(400);
     res.end();
@@ -225,6 +235,10 @@ export async function startMockApi({ cert, key, passthrough = [], mockOnly = nul
     port: proxy.address().port,
     stats,
     faults,
+    // Cuts every open speech recognition connection, as a network drop would.
+    dropStt: () => {
+      for (const ws of wss.clients) ws.terminate();
+    },
     close: () => {
       wss.close();
       proxy.close();

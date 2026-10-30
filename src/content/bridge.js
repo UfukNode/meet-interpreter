@@ -64,7 +64,9 @@ function connectEngine() {
   state.pagePort?.postMessage({ type: 'probe' });
 }
 
-function endSession() {
+// A stop takes the panel away. A failure leaves it, open, saying why, until it is closed;
+// that one shows even with the panel turned off, since nothing else on the page would.
+function endSession(error) {
   state.pagePort?.postMessage({ type: 'deactivate', final: true });
   const port = state.enginePort;
   state.enginePort = null;
@@ -73,9 +75,18 @@ function endSession() {
   } catch {
     // already closed
   }
+  hideSubtitles();
+  if (error && state.hello) {
+    showOverlay({ always: true });
+    state.overlay?.ended(error);
+    return;
+  }
+  closeOverlay();
+}
+
+function closeOverlay() {
   state.overlay?.destroy();
   state.overlay = null;
-  hideSubtitles();
 }
 
 function showSubtitles() {
@@ -94,14 +105,15 @@ function hideSubtitles() {
   state.subtitles = null;
 }
 
-function showOverlay() {
-  if (state.overlay || !state.hello || state.hello.showOverlay === false) return;
+function showOverlay({ always = false } = {}) {
+  if (state.overlay || !state.hello || (state.hello.showOverlay === false && !always)) return;
   const mount = () => {
     state.overlay = new Overlay({
       hello: state.hello,
       onOptions: (options) => state.enginePort?.postMessage({ type: 'ui', action: 'options', options }),
       onChime: () => state.enginePort?.postMessage({ type: 'ui', action: 'chime' }),
       onStop: () => chrome.runtime.sendMessage({ type: 'stop' }).catch(() => endSession()),
+      onClose: closeOverlay,
       // The subtitles step aside when the panel opens, grows or is dragged over them.
       onMove: () => state.subtitles?.place(),
     });
@@ -110,10 +122,9 @@ function showOverlay() {
   else document.addEventListener('DOMContentLoaded', mount, { once: true });
 }
 
-// A new interface language rebuilds the panel with the latest state.
+// A new interface language or language pair rebuilds the panel with the latest state.
 function rebuildOverlay() {
-  state.overlay?.destroy();
-  state.overlay = null;
+  closeOverlay();
   showOverlay();
   if (!state.overlay) return;
   if (state.last.modes) state.overlay.modes(state.last.modes);
@@ -142,6 +153,8 @@ function onEngineMessage(msg) {
     case 'hello':
       state.hello = msg;
       setLanguage(msg.uiLanguage);
+      // A new session gets a fresh panel, not the one a stop or a failure left behind.
+      closeOverlay();
       showOverlay();
       showSubtitles();
       askForDebugCopies();
@@ -149,6 +162,10 @@ function onEngineMessage(msg) {
     case 'language':
       setLanguage(msg.uiLanguage);
       if (state.hello) state.hello = { ...state.hello, uiLanguage: msg.uiLanguage };
+      rebuildOverlay();
+      break;
+    case 'pair':
+      if (state.hello) state.hello = { ...state.hello, myLanguage: msg.myLanguage, theirLanguage: msg.theirLanguage };
       rebuildOverlay();
       break;
     case 'activate':
@@ -185,10 +202,7 @@ function onEngineMessage(msg) {
     case 'overlay':
       if (state.hello) state.hello.showOverlay = msg.show;
       if (msg.show) showOverlay();
-      else {
-        state.overlay?.destroy();
-        state.overlay = null;
-      }
+      else closeOverlay();
       break;
     default:
       break;
@@ -205,7 +219,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       sendResponse({ ok: true });
       return false;
     case 'session-ended':
-      endSession();
+      endSession(msg.error);
       sendResponse({ ok: true });
       return false;
     default:

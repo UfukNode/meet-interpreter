@@ -6,6 +6,8 @@
 // the order it was said. Each sentence starts its speech request as soon as it is
 // known, so the next sentence is usually ready before the current one has finished.
 
+import { Watchdog } from '../shared/watchdog.js';
+
 export class AsyncQueue {
   constructor() {
     this.items = [];
@@ -69,6 +71,10 @@ export class History {
 function isAbortError(err) {
   return err?.name === 'AbortError' || err?.constructor?.name === 'APIUserAbortError';
 }
+
+// A translation that sends nothing more for this long is given up (a TimeoutError), so
+// the speech queued after it can go on.
+const TRANSLATION_STALL_MS = 15000;
 
 // Plays speech items strictly in order, fetching ahead while earlier items play.
 export class Speaker {
@@ -149,8 +155,9 @@ export class Speaker {
 }
 
 export class DirectionPipeline {
-  constructor({ dir, from, to, translator, speaker, history, echoGuard, emit, describeError, isConcise }) {
+  constructor({ dir, from, to, translator, speaker, history, echoGuard, emit, describeError, isConcise, stallMs = TRANSLATION_STALL_MS }) {
     this.dir = dir;
+    this.stallMs = stallMs;
     this.from = from;
     this.to = to;
     this.translator = translator;
@@ -204,6 +211,7 @@ export class DirectionPipeline {
 
   async translate(segment, context) {
     const signal = segment.controller.signal;
+    const watch = new Watchdog(signal, this.stallMs);
     try {
       const pieces = this.translator.translate({
         text: segment.source,
@@ -211,9 +219,9 @@ export class DirectionPipeline {
         to: this.to,
         history: context,
         concise: this.isConcise(),
-        signal,
+        signal: watch.signal,
       });
-      for await (const piece of pieces) {
+      for await (const piece of watch.guard(pieces)) {
         if (signal.aborted) break;
         if (!segment.firstTextAt) segment.firstTextAt = performance.now();
         segment.translation = segment.translation ? `${segment.translation} ${piece}` : piece;
@@ -235,6 +243,7 @@ export class DirectionPipeline {
         this.emit({ id: segment.id, phase: 'error', source: segment.source, error: this.describeError(err) });
       }
     } finally {
+      watch.done();
       segment.sentences.close();
     }
   }

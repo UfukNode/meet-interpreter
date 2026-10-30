@@ -87,8 +87,10 @@ export class Translator {
     this.keyterms = keyterms;
   }
 
-  update({ model, meetingContext, keyterms }) {
+  update({ model, myLanguage, theirLanguage, meetingContext, keyterms }) {
     if (model) this.model = model;
+    if (myLanguage) this.myLanguage = myLanguage;
+    if (theirLanguage) this.theirLanguage = theirLanguage;
     if (meetingContext !== undefined) this.meetingContext = meetingContext;
     if (keyterms) this.keyterms = keyterms;
   }
@@ -134,6 +136,7 @@ export class Translator {
 
 export function describeClaudeError(err) {
   if (err instanceof TranslationRefusedError) return err.message;
+  if (err?.name === 'TimeoutError') return t('translation.stalled');
   if (err instanceof Anthropic.AuthenticationError) return t('claude.auth');
   if (err instanceof Anthropic.PermissionDeniedError) return t('claude.permission');
   if (err instanceof Anthropic.NotFoundError) return t('claude.notFound');

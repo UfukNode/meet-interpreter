@@ -22,6 +22,8 @@ const RECONNECT = new Set([
 // clearly new segment replaces, is committed here with its last partial.
 const STALL_EXTRA_SECS = 2.5;
 const MIN_RECOVERED_WORDS = 3;
+// A token request that gets no answer is tried again rather than waited on forever.
+const TOKEN_TIMEOUT_MS = 8000;
 
 export class SttFatalError extends Error {
   constructor(type, message) {
@@ -34,8 +36,9 @@ export class SttFatalError extends Error {
 // own (with a new single-use token each time) and keeps up to five seconds of audio
 // while it is reconnecting, so nothing said in the gap is lost.
 export class ScribeRealtime {
-  constructor({ name, apiKey, languageCode, vadSilenceSecs = 0.7, stallExtraSecs = STALL_EXTRA_SECS, keyterms = [], onPartial, onCommitted, onServerMessage, onStatus, onFatal, log }) {
+  constructor({ name, apiKey, languageCode, vadSilenceSecs = 0.7, stallExtraSecs = STALL_EXTRA_SECS, tokenTimeoutMs = TOKEN_TIMEOUT_MS, keyterms = [], onPartial, onCommitted, onServerMessage, onStatus, onFatal, log }) {
     this.name = name;
+    this.tokenTimeoutMs = tokenTimeoutMs;
     this.apiKey = apiKey;
     this.languageCode = languageCode;
     this.vadSilenceSecs = vadSilenceSecs;
@@ -61,6 +64,7 @@ export class ScribeRealtime {
     this.lastForcedCommit = 0;
     this.failedBeforeStart = 0;
     this.minimal = false;
+    this.generation = 0;
     this.status = 'idle';
   }
 
@@ -76,15 +80,23 @@ export class ScribeRealtime {
 
   async connect() {
     if (this.stopped) return;
+    // A stop and a new start while the token is on its way make a newer attempt; the
+    // older one must not open a second connection when its token arrives.
+    const attempt = ++this.generation;
     this.setStatus(this.attempts ? 'reconnecting' : 'connecting');
     let token;
+    const limit = new AbortController();
+    const timer = setTimeout(() => limit.abort(new DOMException('no answer in time', 'TimeoutError')), this.tokenTimeoutMs);
     try {
-      token = await fetchScribeToken(this.apiKey);
+      token = await fetchScribeToken(this.apiKey, { signal: limit.signal });
     } catch (err) {
+      if (attempt !== this.generation) return;
       if (err instanceof ElevenLabsError && !err.retryable) return this.fail(new SttFatalError('token', err.message), err);
       return this.retryLater(err);
+    } finally {
+      clearTimeout(timer);
     }
-    if (this.stopped) return;
+    if (this.stopped || attempt !== this.generation) return;
 
     const params = new URLSearchParams({
       model_id: 'scribe_v2_realtime',
@@ -280,6 +292,7 @@ export class ScribeRealtime {
 
   stop() {
     this.stopped = true;
+    this.generation += 1;
     clearTimeout(this.timer);
     clearTimeout(this.stallTimer);
     const ws = this.ws;

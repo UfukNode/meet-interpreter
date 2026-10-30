@@ -4,7 +4,7 @@ import { DirectionPipeline, History, Speaker } from '../../src/offscreen/pipelin
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function fakeTranslator(delays) {
+function fakeTranslator(delays, hang = []) {
   return {
     calls: [],
     async *translate({ text, signal }) {
@@ -14,6 +14,8 @@ function fakeTranslator(delays) {
         await sleep(wait);
         if (signal.aborted) throw new DOMException('aborted', 'AbortError');
         yield piece;
+        // A stream that stops sending and never notices its abort signal.
+        if (hang.includes(text)) await new Promise(() => {});
       }
     },
   };
@@ -37,7 +39,7 @@ function fakeSink() {
   };
 }
 
-function setup({ delays = {}, synthDelay = 3, echo = () => false } = {}) {
+function setup({ delays = {}, synthDelay = 3, echo = () => false, hang = [], stallMs } = {}) {
   const sink = fakeSink();
   const synthCalls = [];
   const speaker = new Speaker({
@@ -52,7 +54,7 @@ function setup({ delays = {}, synthDelay = 3, echo = () => false } = {}) {
     },
   });
   const events = [];
-  const translator = fakeTranslator(delays);
+  const translator = fakeTranslator(delays, hang);
   const pipeline = new DirectionPipeline({
     dir: 'in',
     from: 'en',
@@ -62,6 +64,7 @@ function setup({ delays = {}, synthDelay = 3, echo = () => false } = {}) {
     history: new History(),
     echoGuard: { isEcho: echo },
     emit: (e) => events.push(e),
+    stallMs,
   });
   return { pipeline, sink, events, synthCalls, translator };
 }
@@ -74,6 +77,17 @@ test('speech plays in the order it was said even when a later translation finish
   const order = [...new Set(sink.pushed.map((p) => p.chunk.split('#')[0]))];
   assert.deepEqual(order, ['first one.', 'first two.', 'second one.', 'second two.']);
   assert.equal(sink.ended.length, 4);
+});
+
+test('a translation that stops sending is given up, so the next one is still spoken', async () => {
+  const { pipeline, sink, events } = setup({ hang: ['stuck'], stallMs: 60 });
+  pipeline.onCommitted('stuck');
+  pipeline.onCommitted('next');
+  await sleep(300);
+  const order = [...new Set(sink.pushed.map((p) => p.chunk.split('#')[0]))];
+  assert.deepEqual(order, ['stuck one.', 'next one.', 'next two.']);
+  const error = events.find((e) => e.phase === 'error');
+  assert.equal(error?.id, 'in1');
 });
 
 test('subtitle mode translates but never asks for speech', async () => {

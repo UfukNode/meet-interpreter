@@ -72,6 +72,9 @@ section:first-child { border-top: 0; }
 [hidden] { display: none !important; }
 `;
 
+// How long a live line of words not yet sent stays without a change.
+const LIVE_MS = 3000;
+
 // The panel's shadow root is open, so a script in Meet's page can reach its controls,
 // but it cannot make a trusted event. Only the person's own clicks and keys count.
 function trusted(handler) {
@@ -138,6 +141,8 @@ export class Overlay {
     this.onClose = onClose;
     this.onMove = onMove;
     this.items = { in: [], out: [] };
+    this.liveTimers = {};
+    this.stale = {};
     this.incomingMode = hello.incomingMode;
     this.outgoingMode = hello.outgoingMode;
     this.build();
@@ -326,12 +331,25 @@ export class Overlay {
       return;
     }
     if (msg.phase === 'partial') {
-      live.textContent = msg.source || '';
-      live.hidden = !msg.source;
+      // Words heard but never finished leave the live line once they stop changing:
+      // speech recognition sometimes guesses a word ("Tamam.") in a silence and repeats it.
+      const text = msg.source || '';
+      if (text && text === this.stale[dir]) return;
+      if (text !== live.textContent || live.hidden) {
+        clearTimeout(this.liveTimers[dir]);
+        this.liveTimers[dir] = setTimeout(() => {
+          live.hidden = true;
+          this.stale[dir] = live.textContent;
+        }, LIVE_MS);
+      }
+      live.textContent = text;
+      live.hidden = !text;
       return;
     }
     live.textContent = '';
     live.hidden = true;
+    clearTimeout(this.liveTimers[dir]);
+    this.stale[dir] = '';
     if (dir === 'in') this.inEmpty.hidden = true;
 
     let item = this.items[dir].find((x) => x.id === msg.id);
@@ -506,6 +524,7 @@ export class Overlay {
   }
 
   destroy() {
+    Object.values(this.liveTimers).forEach(clearTimeout);
     window.removeEventListener('resize', this.fit);
     this.sizeWatch.disconnect();
     this.host.remove();

@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Mock Meet group call</title>
+    <style>
+      body { margin: 0; background: #202124; color: #e8eaed; font-family: system-ui, sans-serif; height: 100vh; }
+      .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 8px; height: calc(100vh - 96px); box-sizing: border-box; }
+      .tile { background: #3c4043; border-radius: 10px; display: flex; align-items: flex-end; padding: 12px; font-size: 14px; }
+      .tile.talking { outline: 3px solid #8ab4f8; }
+      .controls { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; }
+      .controls button { background: #3c4043; color: #e8eaed; border: 0; border-radius: 24px; padding: 12px 18px; }
+      .controls button[data-is-muted='true'] { background: #ea4335; }
+      #captions { position: fixed; left: 50%; transform: translateX(-50%); bottom: 88px; width: 70%; height: 90px; background: rgba(0, 0, 0, 0.6); border-radius: 8px; padding: 8px; box-sizing: border-box; }
+    </style>
+  </head>
+  <body>
+    <!-- Served at https://meet.google.com/ by test/meet/group-call.mjs. It does what Meet does
+         with audio: each remote person plays in the tab, and my microphone goes out through
+         an RTCPeerConnection to the far end, which records what it receives. -->
+    <div class="tiles" id="tiles"></div>
+    <div class="controls">
+      <button id="micBtn" data-is-muted="false" aria-label="Turn off microphone">mic</button>
+      <button id="camBtn" data-is-muted="true" aria-label="Turn on camera">cam</button>
+    </div>
+    <script>
+      window.__test = null;
+      const people = (new URLSearchParams(location.search).get('people') || '').split(',').filter(Boolean);
+      (async () => {
+        // One tile per person; a person's lines are named like "Sarah-bye".
+        const tiles = new Map();
+        const voices = {};
+        for (const name of ['Me', ...people]) {
+          const person = name.split('-')[0];
+          if (!tiles.has(person)) {
+            const tile = document.createElement('div');
+            tile.className = 'tile';
+            tile.textContent = person;
+            document.getElementById('tiles').append(tile);
+            tiles.set(person, tile);
+          }
+          if (name === 'Me') continue;
+          const tile = tiles.get(person);
+          const audio = new Audio(`/__fixtures/${encodeURIComponent(name)}.wav`);
+          audio.preload = 'auto';
+          audio.onplay = () => tile.classList.add('talking');
+          audio.onended = () => tile.classList.remove('talking');
+          voices[name] = audio;
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        });
+        const mic = stream.getAudioTracks()[0];
+        const pc1 = new RTCPeerConnection();
+        const pc2 = new RTCPeerConnection();
+        pc1.onicecandidate = (e) => e.candidate && pc2.addIceCandidate(e.candidate);
+        pc2.onicecandidate = (e) => e.candidate && pc1.addIceCandidate(e.candidate);
+        const received = new Promise((resolve) => {
+          pc2.ontrack = (e) => resolve(e.streams[0] || new MediaStream([e.track]));
+        });
+        pc1.addTrack(mic, stream);
+        const offer = await pc1.createOffer();
+        await pc1.setLocalDescription(offer);
+        await pc2.setRemoteDescription(offer);
+        const answer = await pc2.createAnswer();
+        await pc2.setLocalDescription(answer);
+        await pc1.setRemoteDescription(answer);
+        const remoteStream = await received;
+
+        // Remote WebRTC audio only flows into Web Audio while a media element plays it.
+        const sink = new Audio();
+        sink.srcObject = remoteStream;
+        sink.muted = true;
+        sink.play().catch(() => {});
+        const ctx = new AudioContext();
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 2048;
+        ctx.createMediaStreamSource(remoteStream).connect(analyser);
+        const buf = new Float32Array(analyser.fftSize);
+        const recorder = new MediaRecorder(remoteStream, { mimeType: 'audio/webm;codecs=opus' });
+        const chunks = [];
+        recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+        recorder.start(1000);
+
+        window.__test = {
+          say(name) {
+            const audio = voices[name];
+            audio.currentTime = 0;
+            return audio.play();
+          },
+          talking: () => Object.entries(voices).filter(([, a]) => !a.paused && !a.ended).map(([n]) => n),
+          mute(on) {
+            document.getElementById('micBtn').setAttribute('data-is-muted', String(on));
+            mic.enabled = !on;
+          },
+          // Meet's own captions sit low in the window; the subtitles must stay above them.
+          captions(on) {
+            document.getElementById('captions')?.remove();
+            if (!on) return;
+            const region = document.createElement('div');
+            region.id = 'captions';
+            region.setAttribute('role', 'region');
+            region.setAttribute('aria-label', 'Captions');
+            document.body.append(region);
+          },
+          level() {
+            analyser.getFloatTimeDomainData(buf);
+            let sum = 0;
+            for (const v of buf) sum += v * v;
+            return Math.sqrt(sum / buf.length);
+          },
+          async recording() {
+            recorder.requestData();
+            await new Promise((r) => setTimeout(r, 300));
+            const bytes = new Uint8Array(await new Blob(chunks, { type: 'audio/webm' }).arrayBuffer());
+            let binary = '';
+            for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+            return btoa(binary);
+          },
+        };
+      })();
+    </script>
+  </body>
+</html>

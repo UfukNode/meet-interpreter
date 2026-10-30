@@ -38,13 +38,15 @@ They speak English and you hear Turkish. You speak Turkish and they hear English
 - A panel with both sides' subtitles, the mode switches, the live delay and a usage counter with an estimated cost. It starts as a small button low on the left of the Meet window, opens with a click and can be dragged anywhere. A mark on the button shows when there is a warning to read.
 - Optional call recording: the Meet tab's picture with both sides' audio, saved as MP4 on this computer only.
 - Echo guard, a speaker mode for calls without headphones, automatic reconnects, and Meet's microphone followed automatically.
+- Leaving the call, or leaving Meet in the same tab, ends the translation by itself, so nothing keeps listening or billing. If it stops because of an error (a used-up quota, for example), the panel stays open and says why.
+- Settings changed mid-call apply at once, the call languages included. A service that stops answering is given up after a few seconds, so one stuck sentence never holds up the ones after it.
 
 > **Read this first.**
 > - The Turkish voice starts about 1.5 s after the other person finishes a sentence. 0.7 s of that is speech recognition waiting for silence to know the sentence ended. In a long turn, finished sentences are translated while the speaker keeps going. Settings can shorten the wait to 0.5 s, at the cost of a long sentence being split now and then.
 > - Free translation through Chrome's built-in translator is literal: "saat üç" comes out as "15.00 on Friday". Claude gives natural sentences.
 > - Two Meet participants on the same computer garble each other's audio, because Meet's adaptive audio and Chrome's echo cancellation treat them as one room. Test with a second device or a second person.
 > - Tested in real Meet calls with two and three participants, and automatically in Chromium against a mock Meet call. Meet's page changes over time, so try a call before an important meeting.
-> - Group calls work, but every remote voice comes through one translation voice.
+> - Group calls work: in a test call with three English speakers taking turns (the real speech services, a stand-in Meet page) each one was translated in order. Every remote voice comes through one translation voice, and when two people talk at the same time usually only one of them is caught.
 > - Cloning someone's voice needs their consent, under ElevenLabs' terms and data protection law.
 
 ---
@@ -124,12 +126,15 @@ Open `chrome://extensions`, turn on Developer mode, choose **Load unpacked** and
 ```bash
 npm test            # unit tests: audio, sentences, echo guard, ordering, speech recognition protocol, settings
 npm run test:e2e    # builds, loads the extension into Chromium and drives a mock Meet call
+npm run test:scenarios   # the same mock call through restarts, a reload, failures, settings changes and leaving
 npm run test:api    # live check of every API with latency numbers (keys in .env)
 npm run test:free   # live check of DeepL, Mistral and Groq free plans (their keys in .env)
 node test/meet/mock-call-demo.mjs   # both directions with the real ElevenLabs, recorded by the extension
+node test/meet/group-call.mjs       # a four-person call with the real ElevenLabs and Chrome's translator
 ```
 
 - The end-to-end test needs no keys: besides the connection checks it runs a full translation round trip against a local stand-in for the ElevenLabs and Anthropic APIs (`test/e2e/mock-api.mjs`, reached through a local proxy). With keys in `.env` it repeats the round trip against the real APIs.
+- The scenario test needs no keys either. The stand-in fails on purpose (a dropped connection, used-up quotas, an overloaded Claude), and the call is restarted, reloaded, switched between modes, changed in the settings, left and closed.
 - Test speech is made with the macOS `say` command and ffmpeg, so the audio tests run on macOS.
 - For a real call there is a debug copy, compiled in only by `npm run build:debug`: with `localStorage['meet-tercuman-debug'] = '<port>'` set on the Meet page and `node test/meet/debug-sink-server.mjs <port>` running, the extension copies the exact audio it sends to speech recognition, the transcripts and the recording to `127.0.0.1`, and the panel shows a DEBUG badge. The normal build ignores the flag.
 
@@ -150,4 +155,4 @@ node test/meet/mock-call-demo.mjs   # both directions with the real ElevenLabs, 
 
 ## Costs
 
-The panel counts what a call uses and estimates the cost from list prices: Scribe v2 Realtime is $0.39 an hour per active direction, Flash v2.5 and v4 Turbo speech is $0.04 per 1,000 characters, and Claude is billed per token (Haiku 5.5 is the cheapest). Subtitles-only mode makes no speech at all, and free translation costs nothing.
+The panel counts what a call uses and estimates the cost from list prices: Scribe v2 Realtime is $0.39 an hour per active direction, Flash v2.5 and v4 Turbo speech is $0.04 per 1,000 characters, and Claude is billed per token (Haiku 5.5 is the cheapest). Subtitles-only mode makes no speech at all, and free translation costs nothing. A direction turned off listens to nothing, and 30 seconds after the call ends the translation stops by itself.

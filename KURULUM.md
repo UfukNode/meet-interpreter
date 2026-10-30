@@ -72,6 +72,7 @@ Görüşmede eklenti en kaliteli servisle başlar (DeepL, sonra Mistral, sonra G
 
 - **Sadece altyazı** modu ses üretmez ve klon yapmaz; maliyetin en büyük kısmı ortadan kalkar.
 - Meet'te mikrofonun uzun süre kapalıysa senin tarafının ses tanıması kendiliğinden kapanır.
+- Görüşmeden çıkınca çeviri 30 saniye içinde kendiliğinden durur. Aynı sekmede Meet'ten başka bir sayfaya geçince ya da sekmeyi kapatınca hemen durur. Böylece boşuna ses tanıma çalışmaz.
 - Ayarlarda Claude Haiku 5.5 hem en hızlı hem en ucuz çeviri modelidir.
 - Panel, görüşme boyunca harcanan dakikayı, karakteri, tokenı ve tahmini tutarı gösterir.
 
@@ -87,14 +88,17 @@ Görüşmede eklenti en kaliteli servisle başlar (DeepL, sonra Mistral, sonra G
 | Kendi çevirimi geri duyuyorum | Kulaklık kullan ya da Ayarlar'da Hoparlör modunu aç. |
 | Gecikme fazla | Claude modelini Haiku 5.5 yap, sessizlik süresini 0,5 sn seç. |
 | Ses tanıma yeniden bağlanıyor | İnternet bağlantısını kontrol et. Eklenti kendisi yeniden bağlanır; birkaç saniyelik kesintide aradaki konuşma kaybolmaz. |
+| Çeviri kendiliğinden durdu | Panel açık kalır ve nedenini yazar, örneğin ElevenLabs kotası doldu. Sorunu giderince eklenti simgesinden yeniden başlat; paneli × ile kapatabilirsin. |
 
 ## Komut satırı testleri
 
 ```bash
 npm test            # birim testleri
 npm run test:e2e    # eklentiyi Chromium'a yükler, sahte bir Meet görüşmesinde dener
+npm run test:scenarios   # aynı sahte görüşmede yeniden başlatma, sayfa yenileme, hatalar, ayar değişikliği ve görüşmeden çıkış
 npm run test:api    # gerçek API'leri dener ve gecikmeleri ölçer
 npm run test:free   # DeepL, Mistral ve Groq'un ücretsiz planlarını gerçek anahtarlarla dener
+node test/meet/group-call.mjs   # gerçek ElevenLabs ve Chrome çevirmeniyle dört kişilik bir görüşme
 ```
 
 `test:api` ve uçtan uca testin çeviri bölümü için anahtarları proje klasöründeki `.env` dosyasına yaz:

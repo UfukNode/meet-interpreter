@@ -4,15 +4,10 @@
 
 ### Live two-way speech translation for Google Meet
 
-They speak English and you hear Turkish. You speak Turkish and they hear English, in your own voice. A Chrome extension with no backend: the keys stay in your browser.
-
-![Chrome](https://img.shields.io/badge/Chrome-MV3_extension-4285F4?style=flat-square&labelColor=0d1117&logo=googlechrome&logoColor=white)
-![Speech](https://img.shields.io/badge/Speech-ElevenLabs-ffffff?style=flat-square&labelColor=0d1117)
-![Translation](https://img.shields.io/badge/Translation-Claude_or_free-D97757?style=flat-square&labelColor=0d1117)
-![Tests](https://img.shields.io/badge/Tests-node_test_+_Playwright-2ea44f?style=flat-square&labelColor=0d1117)
+Any two of 20 languages, both ways. They speak English and you hear Turkish; you speak Turkish and they hear English, in your own voice. A Chrome extension with no backend: the keys stay in your browser.
 
 <table>
-  <tr><td><b>Languages</b></td><td>20, English and Turkish by default</td></tr>
+  <tr><td><b>Languages</b></td><td>20, any two of them; English and Turkish by default</td></tr>
   <tr><td><b>Modes</b></td><td>Voice, subtitles only or off, for each direction</td></tr>
   <tr><td><b>Delay</b></td><td>About 1.5 s after each sentence, measured in a real call</td></tr>
   <tr><td><b>Backend</b></td><td>None</td></tr>
@@ -29,6 +24,7 @@ They speak English and you hear Turkish. You speak Turkish and they hear English
 
 ## Features
 
+- Twenty languages, any two of them in either direction: English, Turkish, German, French, Spanish, Italian, Portuguese, Dutch, Polish, Russian, Ukrainian, Arabic, Greek, Romanian, Swedish, Indonesian, Hindi, Chinese, Japanese and Korean.
 - Listens to the call through Chrome tab capture and to you through your microphone, transcribes both sides with ElevenLabs Scribe v2 Realtime, translates with Claude (or for free, see below) and speaks the result with ElevenLabs text to speech.
 - Your translated voice goes into the call in place of your microphone. Meet keeps working as usual, and muting in Meet stops everything that would reach the call.
 - A mode for each direction: spoken translation, subtitles only (no speech credits used) or off, switchable mid-call from the popup or the panel on the page.
@@ -42,7 +38,7 @@ They speak English and you hear Turkish. You speak Turkish and they hear English
 - Settings changed mid-call apply at once, the call languages included. A service that stops answering is given up after a few seconds, so one stuck sentence never holds up the ones after it.
 
 > **Read this first.**
-> - The Turkish voice starts about 1.5 s after the other person finishes a sentence. 0.7 s of that is speech recognition waiting for silence to know the sentence ended. In a long turn, finished sentences are translated while the speaker keeps going. Settings can shorten the wait to 0.5 s, at the cost of a long sentence being split now and then.
+> - The translated voice starts about 1.5 s after the other person finishes a sentence. 0.7 s of that is speech recognition waiting for silence to know the sentence ended. In a long turn, finished sentences are translated while the speaker keeps going. Settings can shorten the wait to 0.5 s, at the cost of a long sentence being split now and then.
 > - Free translation through Chrome's built-in translator is literal: "saat üç" comes out as "15.00 on Friday". Claude gives natural sentences.
 > - Two Meet participants on the same computer garble each other's audio, because Meet's adaptive audio and Chrome's echo cancellation treat them as one room. Test with a second device or a second person.
 > - Tested in real Meet calls with two and three participants, and automatically in Chromium against a mock Meet call. Meet's page changes over time, so try a call before an important meeting.
@@ -92,9 +88,19 @@ Choose **Free** as the translation model in the settings and no Anthropic key is
 ## Requirements
 
 - Chrome 116 or newer (or another Chromium browser); 138 or newer for free translation without keys
-- Node.js 18 or newer, to build
+- Node.js 18 or newer, only to build from source
 - An ElevenLabs API key (voice cloning needs a paid plan), and an Anthropic API key unless you choose free translation
 - Headphones
+
+---
+
+## Install
+
+1. Download [meet-interpreter.zip](https://github.com/UfukNode/meet-interpreter/releases/latest/download/meet-interpreter.zip) from the latest release and unzip it.
+2. Open `chrome://extensions`, turn on Developer mode, choose **Load unpacked** and pick the unzipped `meet-interpreter` folder.
+3. The settings page opens by itself. The full walkthrough, in Turkish, is in [KURULUM.md](KURULUM.md).
+
+Keep the folder where it is: Chrome runs the extension from it. To update, replace the folder's contents with the new release and press reload on the extension.
 
 ---
 
@@ -117,7 +123,7 @@ npm run build
 Built dist/
 ```
 
-Open `chrome://extensions`, turn on Developer mode, choose **Load unpacked** and pick the `dist` folder. The settings page opens by itself; the full walkthrough, in Turkish, is in [KURULUM.md](KURULUM.md). After pulling changes, run `npm run build` again and press reload on the extension.
+Open `chrome://extensions`, turn on Developer mode, choose **Load unpacked** and pick the `dist` folder. After pulling changes, run `npm run build` again and press reload on the extension. `npm run zip` builds and packs `dist` into `meet-interpreter.zip`, the file a release carries.
 
 ---
 
@@ -156,3 +162,9 @@ node test/meet/group-call.mjs       # a four-person call with the real ElevenLab
 ## Costs
 
 The panel counts what a call uses and estimates the cost from list prices: Scribe v2 Realtime is $0.39 an hour per active direction, Flash v2.5 and v4 Turbo speech is $0.04 per 1,000 characters, and Claude is billed per token (Haiku 5.5 is the cheapest). Subtitles-only mode makes no speech at all, and free translation costs nothing. A direction turned off listens to nothing, and 30 seconds after the call ends the translation stops by itself.
+
+---
+
+## License
+
+[MIT](LICENSE)

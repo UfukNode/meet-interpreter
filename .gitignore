@@ -1,5 +1,6 @@
 node_modules/
 dist/
+meet-interpreter.zip
 .env
 test/e2e/fixtures/
 test/e2e/out/

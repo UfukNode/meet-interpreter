@@ -1,13 +1,13 @@
 # Meet Tercüman Kurulum
 
-Google Meet görüşmesinde karşı tarafı Türkçe duyarsın, o da seni İngilizce duyar. Bu rehber kurulumu ve ilk denemeyi adım adım anlatır.
+Google Meet görüşmesinde karşı tarafı kendi dilinde duyarsın, o da seni kendi dilinde duyar. 20 dil var, istediğin ikisini seçersin; bu rehber Türkçe ile İngilizce örneğini kullanır ve kurulumu, ilk denemeyi adım adım anlatır.
 
 ## Gereksinimler
 
 | Gereksinim | Açıklama |
 | --- | --- |
 | Chrome 116 veya üstü | Ya da Brave, Edge gibi Chromium tabanlı bir tarayıcı |
-| Node.js 18 veya üstü | Eklentiyi derlemek için, bir kez |
+| Node.js 18 veya üstü | Yalnızca kaynaktan derleyeceksen |
 | ElevenLabs API anahtarı | Ses tanıma ve ses üretimi. Ses klonlama için Starter veya üstü plan |
 | Anthropic API anahtarı | Çeviriyi Claude yapar. Hesapta biraz kredi olmalı. Ücretsiz çeviri seçersen gerekmez |
 | Kulaklık | Hoparlörden çıkan çeviri mikrofona geri girmesin diye |
@@ -19,21 +19,26 @@ Google Meet görüşmesinde karşı tarafı Türkçe duyarsın, o da seni İngil
 
 ## Kurulum
 
-1. İndir ve derle:
-   ```bash
-   git clone https://github.com/UfukNode/meet-interpreter.git
-   cd meet-interpreter
-   npm install
-   npm run build
-   ```
+1. GitHub sayfasında sağdaki **Releases** bölümünden son sürümü aç ve `meet-interpreter.zip` dosyasını indir (doğrudan bağlantı: [meet-interpreter.zip](https://github.com/UfukNode/meet-interpreter/releases/latest/download/meet-interpreter.zip)). İndirilenler klasöründe dosyaya çift tıkla: `meet-interpreter` klasörü çıkar.
 2. Chrome'da `chrome://extensions` adresini aç, sağ üstten **Geliştirici modu**nu aç.
-3. **Paketlenmemiş öğe yükle** düğmesine bas, `meet-interpreter` klasörünün içine gir ve `dist` klasörünü seç. `meet-interpreter` klasörünün kendisini seçersen Chrome manifest dosyasını bulamaz.
+3. **Paketlenmemiş öğe yükle** düğmesine bas ve `meet-interpreter` klasörünü seç. Klasörü silme ya da taşıma: Chrome eklentiyi oradan çalıştırır. Yeni sürüm çıkınca klasörün içini yeni ZIP'tekilerle değiştir ve eklentinin yenile düğmesine bas.
 4. Araç çubuğundaki yapboz simgesinden Meet Tercüman'ı sabitle.
 5. Arayüz İngilizce açılır. Türkçe için ayarlar sayfasının ya da açılır pencerenin sağ üstündeki **TR** düğmesine bas; bu rehberdeki düğme adları Türkçe arayüze göredir.
 6. Açılan ayarlar sayfasında (açılmazsa simgeye sağ tık, Seçenekler):
    1. İki anahtarı yapıştır ve **Anahtarları test et** de.
    2. **Mikrofon iznini ver** de ve izin ver.
    3. **Benim sesim** bölümünde metni sessiz bir odada, normal sesinle 1 ile 2 dakika arası oku, **Bu kayıttan sesimi oluştur** de, sonra **Dinle** ile kontrol et.
+
+### Kaynaktan derlemek istersen
+
+```bash
+git clone https://github.com/UfukNode/meet-interpreter.git
+cd meet-interpreter
+npm install
+npm run build
+```
+
+3. adımda `meet-interpreter` klasörünün içindeki `dist` klasörünü seç. Klasörün kendisini seçersen Chrome manifest dosyasını bulamaz.
 
 ## Ücretsiz çeviri
 
@@ -80,7 +85,7 @@ Görüşmede eklenti en kaliteli servisle başlar (DeepL, sonra Mistral, sonra G
 
 | Belirti | Çözüm |
 | --- | --- |
-| "Manifest dosyası eksik veya okunamıyor" | Proje klasörü seçilmiş. **İptal** de, **Paketlenmemiş öğe yükle** ile `meet-interpreter` içindeki `dist` klasörünü seç. |
+| "Manifest dosyası eksik veya okunamıyor" | Yanlış klasör seçilmiş. **İptal** de, **Paketlenmemiş öğe yükle** ile içinde `manifest.json` olan klasörü seç: ZIP'ten çıkan `meet-interpreter` klasörü ya da kaynaktan derlediysen `dist` klasörü. |
 | "Ücretsiz çeviri ilk kullanımda hazırlanmalı" | Ayarlar > Çeviri'de "Ücretsiz çeviriyi hazırla"ya bas ya da "Çeviriyi başlat"a tekrar bas. |
 | "Meet sekmesini bir kez yenileyin" | Eklenti, sekme açıldıktan sonra kurulmuş. F5 ile yenile. |
 | "Eklentinin mikrofon izni yok" | Ayarlar, Mikrofon iznini ver. |

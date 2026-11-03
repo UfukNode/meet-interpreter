@@ -182,11 +182,12 @@ export function describeCaption(c) {
     return `closed      by the extension ${why}${c.sent ? '' : ' (could not send)'}`;
   }
   if (c.phase === 'first-audio') return `first sound ${c.id}: ${c.afterSpeech ?? '?'} ms after the speech ended, ${c.afterCommit} ms after the commit`;
+  if (c.phase === 'draft') return `draft       ${c.translation || '(cleared)'}`;
   return `${c.phase.padEnd(11)} ${c.error || c.source || ''}`;
 }
 
 // Phases that are only measurements, never problems.
-export const INFO_PHASES = new Set(['committed', 'translated', 'closed', 'first-audio', 'echo']);
+export const INFO_PHASES = new Set(['committed', 'translated', 'closed', 'first-audio', 'echo', 'draft']);
 
 export async function transcribe(key, file, languageCode) {
   const wav = file.replace(/\.\w+$/, '.wav');

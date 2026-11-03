@@ -1,7 +1,9 @@
 // What they say, translated, shown like film subtitles low in the Meet window: above
 // Meet's own controls, and above Meet's captions when those are on. Only the translation
-// shows, unless the settings ask for their own words under it too. It never takes a
-// click, so Meet stays usable underneath. The panel keeps the full history.
+// shows, unless the settings ask for their own words under it too. While they are still
+// talking, a dimmed draft (their words so far, translated on this computer) stands where
+// the sentence's translation will come. Each line stays long enough to read. It never
+// takes a click, so Meet stays usable underneath. The panel keeps the full history.
 
 const CSS = `
 :host { all: initial; }
@@ -17,20 +19,26 @@ const CSS = `
   background: rgba(14, 16, 20, 0.82); color: #fff; border-radius: 10px; padding: 7px 16px 8px;
   text-align: center; box-shadow: 0 2px 14px rgba(0, 0, 0, 0.35);
 }
-.line .tr { font-size: 24px; line-height: 1.3; font-weight: 500; }
-.line .src { font-size: 13px; line-height: 1.35; color: #bdc1c6; margin-top: 2px; }
+.line .tr { font-size: 24px; line-height: 1.3; font-weight: 500; text-wrap: balance; }
+.line .src { font-size: 13px; line-height: 1.35; color: #bdc1c6; margin-top: 2px; text-wrap: balance; }
 .line .src:empty { display: none; }
 .line.old { opacity: 0.6; }
 .line.old .tr { font-size: 18px; }
+.line.draft { background: rgba(14, 16, 20, 0.62); }
+.line.draft .tr { color: #dfe3e8; font-style: italic; }
 @media (max-width: 760px) {
   .line .tr { font-size: 18px; }
   .line.old .tr { font-size: 15px; }
 }
 `;
 
-const KEEP = 2;
-const FADE_MS = 8000;
+const KEEP = 2; // lines on screen at most, a draft included
 const ABOVE_CONTROLS = 104;
+
+// Long enough to read a line, at about 15 characters a second, plus a moment to look.
+export function readingMs(text) {
+  return Math.min(12000, Math.max(4000, 1500 + String(text || '').length * 70));
+}
 
 export class SubtitleBar {
   constructor() {
@@ -45,6 +53,7 @@ export class SubtitleBar {
     root.append(this.bar);
     document.body.append(this.host);
     this.lines = [];
+    this.draft = null;
     this.enabled = true;
     this.showOriginal = false;
     this.fadeTimer = 0;
@@ -63,30 +72,61 @@ export class SubtitleBar {
 
   // Captions from the engine; only the translation of what they said is shown.
   caption(msg) {
-    if (!this.enabled || msg.dir === 'out' || !msg.translation) return;
-    if (msg.phase !== 'translating' && msg.phase !== 'translated') return;
+    if (!this.enabled || msg.dir === 'out') return;
+    if (msg.phase === 'draft') {
+      this.showDraft(msg.translation);
+      return;
+    }
+    if (!msg.translation || (msg.phase !== 'translating' && msg.phase !== 'translated')) return;
     let line = this.lines.find((l) => l.id === msg.id);
     if (!line) {
-      const tr = document.createElement('div');
-      tr.className = 'tr';
-      const src = document.createElement('div');
-      src.className = 'src';
-      const el = document.createElement('div');
-      el.className = 'line';
-      el.append(tr, src);
-      line = { id: msg.id, el, tr, src };
+      // The sentence's own translation takes its draft's place.
+      this.dropDraft();
+      line = makeLine(msg.id);
       this.lines.push(line);
-      this.bar.append(el);
-      while (this.lines.length > KEEP) this.lines.shift().el.remove();
+      this.bar.append(line.el);
     }
     line.tr.textContent = msg.translation;
     line.source = msg.source || '';
     line.src.textContent = this.showOriginal ? line.source : '';
+    this.fit();
+    this.show(msg.translation);
+  }
+
+  showDraft(text) {
+    if (!text) {
+      this.dropDraft();
+      this.fit();
+      if (!this.lines.length) this.bar.classList.add('hidden');
+      return;
+    }
+    if (!this.draft) {
+      this.draft = makeLine(null);
+      this.draft.el.classList.add('draft');
+    }
+    this.draft.tr.textContent = text;
+    this.bar.append(this.draft.el); // always the newest line
+    this.fit();
+    this.show(text);
+  }
+
+  dropDraft() {
+    this.draft?.el.remove();
+    this.draft = null;
+  }
+
+  // At most KEEP lines, the draft included; only finished lines that a newer finished
+  // line follows are dimmed.
+  fit() {
+    while (this.lines.length > KEEP - (this.draft ? 1 : 0)) this.lines.shift().el.remove();
     this.lines.forEach((l, i) => l.el.classList.toggle('old', i < this.lines.length - 1));
+  }
+
+  show(text) {
     this.place();
     this.bar.classList.remove('hidden');
     clearTimeout(this.fadeTimer);
-    this.fadeTimer = setTimeout(() => this.bar.classList.add('hidden'), FADE_MS);
+    this.fadeTimer = setTimeout(() => this.bar.classList.add('hidden'), readingMs(text));
   }
 
   // Meet's own captions sit in the same place; when they are showing, go above them. When
@@ -119,6 +159,7 @@ export class SubtitleBar {
     clearTimeout(this.fadeTimer);
     for (const line of this.lines) line.el.remove();
     this.lines = [];
+    this.dropDraft();
     this.bar.classList.add('hidden');
   }
 
@@ -126,4 +167,15 @@ export class SubtitleBar {
     clearTimeout(this.fadeTimer);
     this.host.remove();
   }
+}
+
+function makeLine(id) {
+  const tr = document.createElement('div');
+  tr.className = 'tr';
+  const src = document.createElement('div');
+  src.className = 'src';
+  const el = document.createElement('div');
+  el.className = 'line';
+  el.append(tr, src);
+  return { id, el, tr, src };
 }

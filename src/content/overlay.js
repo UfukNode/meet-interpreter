@@ -318,8 +318,10 @@ export class Overlay {
     this.applyMode();
   }
 
+  // Drafts (their words translated while they talk) are for the subtitle bar; the panel
+  // keeps its live line in their own words.
   caption(msg) {
-    if (this.hello.diagnostic || msg.phase === 'echo') return;
+    if (this.hello.diagnostic || msg.phase === 'echo' || msg.phase === 'draft') return;
     const dir = msg.dir === 'out' ? 'out' : 'in';
     const list = dir === 'in' ? this.inList : this.outList;
     const live = dir === 'in' ? this.inLive : this.outLive;

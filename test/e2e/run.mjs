@@ -11,6 +11,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { startMockApi } from './mock-api.mjs';
+import { engineTarget } from '../meet/tools.mjs';
 import {
   root, dist, fixtures, outDir, check, sleep, loadEnv, makeFixtures, launch, send, sessionState, maxLevel, waitFor, readCaptions, done, summary,
 } from './harness.mjs';
@@ -144,6 +145,11 @@ async function mockTranslationTest() {
     const start = await send(control, { type: 'start', tabId, options: { incomingMode: 'voice', outgoingMode: 'voice' } });
     check('a translation session starts', start?.ok === true, start?.error);
     if (!start?.ok) return;
+    // Chrome's own translator never finishes its download in this Chromium, so the drafts
+    // get a stand-in that answers like it, set in the engine before the first words come.
+    const engine = await engineTarget(env.context, control);
+    await engine.evaluate(`globalThis.Translator = { availability: async () => 'available', create: async () => ({ translate: async (text) => 'Taslak: ' + text }) }; true`);
+    const draftLine = () => meet.evaluate(() => document.getElementById('meet-tercuman-subtitles')?.shadowRoot?.querySelector('.line.draft')?.textContent || '');
     // The far end is listened to from now on: my translated voice may come during the
     // checks below, a sentence or two before its caption is read.
     await meet.evaluate(() => {
@@ -151,8 +157,12 @@ async function mockTranslationTest() {
       window.__farTimer = setInterval(() => (window.__farMax = Math.max(window.__farMax, window.__test.level())), 15);
     });
 
+    const draft = await waitFor(draftLine, 30000, 100);
+    check('while they are still talking, a draft of their words shows in the subtitles', draft === 'Taslak: Hi, thanks for joining', draft);
     const incoming = await waitFor(async () => done((await readCaptions(meet)).incoming), 30000, 300);
     check('the counterpart is transcribed and shown in Turkish', incoming?.translation === 'Merhaba, bugün görüşmeye katıldığınız için teşekkürler.', JSON.stringify(incoming));
+    const panelText = await meet.evaluate(() => document.getElementById('meet-tercuman-overlay')?.shadowRoot?.textContent || '');
+    check('drafts stay out of the panel', !panelText.includes('Taslak:'));
     // A script in Meet's page cannot tick the consent box or ask for debug copies.
     const scripted = await meet.evaluate(async () => {
       localStorage.setItem('meet-tercuman-debug', '47913');

@@ -401,3 +401,26 @@ test('a translation starts with a capital when the sentence did', () => {
   assert.equal(matchCase('Cuma günü saat 15.00 bizim için uygun.', '15.00 on Friday is suitable for us.', 'en'), '15.00 on Friday is suitable for us.');
   assert.equal(matchCase('3 Ekim uygun.', 'ekim 3 uygun.', 'en'), 'ekim 3 uygun.');
 });
+
+test("Chrome's translator gets everyday phrases in plain words, and terms come back as written", async () => {
+  const heard = [];
+  const local = {
+    availability: async () => 'available',
+    create: async () => ({
+      translate: async (text) => {
+        heard.push(text);
+        // Chrome's translator changes the term's case, as it did with "cZAMA" in a real test.
+        return text === "Let's talk briefly with the cZAMA team on Monday." ? 'Pazartesi günü CZAMA ekibiyle kısaca konuşalım.' : text;
+      },
+      destroy() {},
+    }),
+  };
+  const t = translator({ keys: {}, fetchImpl: fakeFetch({}).fetchImpl, local, keyterms: ['cZAMA'] });
+  const pieces = await collect(t.translate({ ...job, text: "Let's touch base with the cZAMA team on Monday." }));
+  assert.deepEqual(heard, ["Let's talk briefly with the cZAMA team on Monday."]);
+  assert.deepEqual(pieces, ['Pazartesi günü cZAMA ekibiyle kısaca konuşalım.']);
+});
+
+test('DeepL is told which names and terms to keep, through its context', () => {
+  assert.equal(deeplContext({ meetingContext: 'Launch call.', history: [], keyterms: ['Fungo', 'cZAMA'] }), 'Launch call.\nNames and terms, kept as written: Fungo, cZAMA');
+});

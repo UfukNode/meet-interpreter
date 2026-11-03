@@ -21,6 +21,7 @@ import { Translator, describeClaudeError } from './translator.js';
 import { FreeTranslator, freeKeys } from './free-translator.js';
 import { synthesize } from './tts.js';
 import { DirectionPipeline, History, Speaker } from './pipeline.js';
+import { LiveDrafts } from './drafts.js';
 import { CloneCollector } from './voice-clone.js';
 import { saveChunk, saveRecording, recordingChunks } from '../shared/recordings.js';
 import { DebugSink, debugSinkUrl } from './debug-sink.js';
@@ -295,6 +296,9 @@ class Session {
     this.history = new History(12);
     this.early = { in: new EarlySentences(), out: new EarlySentences() };
     this.turns = this.createTurns();
+    // Their words in my language while they are still talking, from Chrome's own translator.
+    this.drafts = new LiveDrafts({ keyterms, onDraft: (translation, source) => this.caption('in', { phase: 'draft', translation, source }) });
+    this.drafts.setPair(s.theirLanguage, s.myLanguage);
     this.sentGuard = new EchoGuard(); // my translated voice, in their language
     this.playedGuard = new EchoGuard(); // their translated voice, in my language
 
@@ -497,12 +501,15 @@ class Session {
     const early = this.early?.[dir];
     const ready = early?.partial(text);
     if (ready) this.translateSegment(dir, ready);
-    this.caption(dir, { phase: 'partial', source: early ? early.live(text) : text });
+    const live = early ? early.live(text) : text;
+    if (dir === 'in' && this.incomingMode !== 'off') this.drafts?.heard(live);
+    this.caption(dir, { phase: 'partial', source: live });
   }
 
   onCommitted(dir, text) {
     this.debugSink?.event({ kind: 'committed', dir, text });
     const speechEndAt = this.turns?.[dir].committed();
+    if (dir === 'in') this.drafts?.committed();
     if (dir === 'out' && !this.canSendOutgoing()) {
       this.early?.out.reset();
       return;
@@ -733,7 +740,10 @@ class Session {
       this.incomingMode = options.incomingMode;
       this.incoming?.setMode(this.incomingMode);
       this.ensureStt('in', this.incomingMode !== 'off');
-      if (this.incomingMode === 'off') this.caption('in', { phase: 'partial', source: '' });
+      if (this.incomingMode === 'off') {
+        this.caption('in', { phase: 'partial', source: '' });
+        this.drafts?.clear();
+      }
       if (this.incomingMode !== 'voice') this.stopCloneCollection();
       else if (this.cloneConsent) this.startClone();
       this.updateDucking();
@@ -786,6 +796,10 @@ class Session {
     // A new ElevenLabs key is used from the next connection on (speech takes it right away).
     for (const stt of [this.sttIn, this.sttOut]) if (stt) stt.apiKey = next.elevenLabsKey;
     const pairChanged = next.myLanguage !== prev.myLanguage || next.theirLanguage !== prev.theirLanguage;
+    if (this.drafts) {
+      this.drafts.keyterms = parseKeyterms(next.keyterms);
+      this.drafts.setPair(next.theirLanguage, next.myLanguage);
+    }
     if (pairChanged && this.incoming) {
       // A new language pair mid-call: both sides are heard and translated in it from now on.
       Object.assign(this.incoming, { from: next.theirLanguage, to: next.myLanguage });

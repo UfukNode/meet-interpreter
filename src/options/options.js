@@ -117,6 +117,8 @@ async function micGranted() {
 
 async function refreshChecklist() {
   const free = isFreeTranslation(settings);
+  // With no free key, only Chrome's own translator works: say what a free DeepL key adds.
+  $('deeplTip').hidden = !free || FREE_KEY_NAMES.some((k) => settings[k]);
   $('check-elevenlabs').classList.toggle('done', Boolean(settings.elevenLabsKey));
   $('check-anthropic').textContent = free ? t('opt.check.anthropicFree') : t('opt.check.anthropic');
   $('check-anthropic').classList.toggle('done', free ? localState === 'ready' || FREE_KEY_NAMES.some((k) => settings[k]) : Boolean(settings.anthropicKey));

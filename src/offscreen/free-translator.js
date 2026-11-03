@@ -10,6 +10,7 @@
 
 import { buildSystemPrompt, buildUserMessage } from './translator.js';
 import { SentenceSplitter, isOnlyPunctuation } from '../shared/text.js';
+import { keepTerms, plainForMachine } from '../shared/plain.js';
 import { t, locale } from '../shared/i18n.js';
 
 const MISTRAL_URL = 'https://api.mistral.ai/v1/chat/completions';
@@ -95,9 +96,10 @@ export function deeplCodes(from, to) {
 }
 
 // DeepL's context field steers the translation without being translated or billed.
-export function deeplContext({ meetingContext, history }) {
+export function deeplContext({ meetingContext, history, keyterms }) {
   const lines = [];
   if (meetingContext?.trim()) lines.push(meetingContext.trim());
+  if (keyterms?.length) lines.push(`Names and terms, kept as written: ${keyterms.join(', ')}`);
   for (const item of history || []) lines.push(item.source);
   return lines.join('\n').slice(-1500);
 }
@@ -304,7 +306,7 @@ export class FreeTranslator {
     const url = `${deeplBase(key)}/v2/translate`;
     const headers = { Authorization: `DeepL-Auth-Key ${key}` };
     const body = { text: [text], ...deeplCodes(from, to) };
-    const context = deeplContext({ meetingContext: this.meetingContext, history });
+    const context = deeplContext({ meetingContext: this.meetingContext, history, keyterms: this.keyterms });
     if (context) body.context = context;
     // Ask for DeepL's best model; if this plan refuses the field, plain requests from now on.
     if (!this.deeplPlain) {
@@ -344,10 +346,11 @@ export class FreeTranslator {
     return chatText(data);
   }
 
+  // Everyday phrases go to Chrome's translator in plainer words (see shared/plain.js).
   async localTranslate({ text, from, to }, signal) {
     const translator = await this.localTranslator(from, to);
     try {
-      return await translator.translate(text, { signal });
+      return keepTerms(await translator.translate(plainForMachine(text, from), { signal }), this.keyterms);
     } catch (err) {
       if (err?.name === 'TimeoutError') throw new StepError('timed out', { timeout: true });
       throw err;

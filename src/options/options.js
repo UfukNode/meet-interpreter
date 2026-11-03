@@ -439,7 +439,7 @@ async function init() {
   for (const id of ['myLanguage', 'theirLanguage', 'claudeModel', 'ttsModel', 'micDeviceLabel', 'outputDeviceLabel']) bindSelect(id);
   bindSelect('vadSilenceSecs', Number);
   bindSelect('cloneSeconds', Number);
-  for (const id of ['offerTheirClone', 'deleteCloneAfter', 'halfDuplex', 'showOverlay', 'subtitleBar']) bindCheck(id);
+  for (const id of ['offerTheirClone', 'deleteCloneAfter', 'halfDuplex', 'showOverlay', 'subtitleBar', 'subtitleOriginal']) bindCheck(id);
   for (const id of ['translationVolume', 'originalVolume', 'duckVolume', 'monitorVolume', 'stability', 'similarity']) bindSlider(id);
 
   $('elevenLabsKey').addEventListener('change', loadVoices);

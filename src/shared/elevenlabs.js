@@ -82,15 +82,23 @@ export async function deleteVoice(apiKey, voiceId) {
   await request(apiKey, `/v1/voices/${encodeURIComponent(voiceId)}`, { method: 'DELETE' });
 }
 
+// Opens the connection the next speech request will use, so it does not pay for a new
+// one (about 0.2 s). The endpoint needs no key and costs nothing; the answer is ignored.
+export function warmConnection(fetchImpl = (...args) => fetch(...args)) {
+  fetchImpl(`${ELEVENLABS_API}/v1/voices/settings/default`).catch(() => {});
+}
+
 // Starts a streamed text to speech request. The response body is raw 16-bit mono PCM.
+// The text around it (`previousText`, `nextText`) only shapes the intonation.
 export async function speechStream(
   apiKey,
-  { voiceId, text, modelId, languageCode, voiceSettings, previousText, sampleRate = 24000, signal },
+  { voiceId, text, modelId, languageCode, voiceSettings, previousText, nextText, sampleRate = 24000, signal },
 ) {
   const body = { text, model_id: modelId };
   if (languageCode) body.language_code = languageCode;
   if (voiceSettings) body.voice_settings = voiceSettings;
   if (previousText) body.previous_text = previousText;
+  if (nextText) body.next_text = nextText;
   return request(apiKey, `/v1/text-to-speech/${encodeURIComponent(voiceId)}/stream?output_format=pcm_${sampleRate}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

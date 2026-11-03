@@ -136,8 +136,57 @@ export const WATCH_CAPTIONS = `(() => {
     if (e.phase !== 'partial' && e.phase !== 'translating') globalThis.__captions.push({ at: performance.now() - t0, dir, ...e });
     return original(dir, e);
   };
+  // When the extension itself closed a segment (see shared/turn.js), and how long after the
+  // end of the speech (or the commit, when that is not known) its translation was first heard.
+  for (const dir of ['in', 'out']) {
+    const stt = dir === 'in' ? s.sttIn : s.sttOut;
+    const commitNow = stt.commitNow.bind(stt);
+    stt.commitNow = () => {
+      const sent = commitNow();
+      const close = s.turns?.[dir]?.lastClose || {};
+      globalThis.__captions.push({ at: performance.now() - t0, dir, phase: 'closed', sent, ...close });
+      return sent;
+    };
+    // Every partial with its time, to see how far behind the speech they come.
+    const onPartial = s.onPartial.bind(s);
+    s.onPartial = (d, text) => {
+      globalThis.__partials ||= [];
+      globalThis.__partials.push({ at: performance.now() - t0, dir: d, text, endedAt: s.turns?.[d]?.endedAt != null ? s.turns[d].endedAt - t0 : null });
+      return onPartial(d, text);
+    };
+  }
+  const firstAudio = s.onFirstAudio.bind(s);
+  s.onFirstAudio = (item) => {
+    const g = item.segment;
+    const already = g.firstAudioAt;
+    firstAudio(item);
+    if (already) return;
+    globalThis.__captions.push({
+      at: performance.now() - t0,
+      dir: g.id.startsWith('in') ? 'in' : 'out',
+      phase: 'first-audio',
+      id: g.id,
+      afterCommit: Math.round(g.firstAudioAt - g.committedAt),
+      afterSpeech: g.speechEndAt ? Math.round(g.firstAudioAt - g.speechEndAt) : null,
+    });
+  };
   return true;
 })()`;
+
+// One line per caption event, for the printed timelines.
+export function describeCaption(c) {
+  if (c.phase === 'committed') return `heard       ${c.source}`;
+  if (c.phase === 'translated') return `translated  ${c.translation}  (${c.translateMs} ms)`;
+  if (c.phase === 'closed') {
+    const why = c.silenceSecs === undefined ? 'after the speech' : `after ${c.silenceSecs.toFixed(1)} s of silence, ${c.quick ? `a finished sentence heard ${c.partialAfterMs} ms after the speech` : 'the full wait'}`;
+    return `closed      by the extension ${why}${c.sent ? '' : ' (could not send)'}`;
+  }
+  if (c.phase === 'first-audio') return `first sound ${c.id}: ${c.afterSpeech ?? '?'} ms after the speech ended, ${c.afterCommit} ms after the commit`;
+  return `${c.phase.padEnd(11)} ${c.error || c.source || ''}`;
+}
+
+// Phases that are only measurements, never problems.
+export const INFO_PHASES = new Set(['committed', 'translated', 'closed', 'first-audio', 'echo']);
 
 export async function transcribe(key, file, languageCode) {
   const wav = file.replace(/\.\w+$/, '.wav');

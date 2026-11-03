@@ -3,9 +3,11 @@ import { int16ToFloat32 } from './pcm.js';
 
 // Plays streamed 24 kHz PCM gap-free into an AudioNode. Each utterance has an id and
 // its own resampler, so chunk boundaries never click. When the queue runs dry the
-// next chunk waits `prebufferSec`, which absorbs network jitter.
+// next chunk waits `prebufferSec`, which absorbs jitter. ElevenLabs sends speech much
+// faster than it plays (its first burst holds about 0.1 s, and 1.4 s has arrived within
+// 0.15 s of the first byte), so a short wait is enough.
 export class PcmScheduler {
-  constructor(ctx, destination, { inputRate = 24000, prebufferSec = 0.12, onPlayingChange } = {}) {
+  constructor(ctx, destination, { inputRate = 24000, prebufferSec = 0.05, onPlayingChange } = {}) {
     this.ctx = ctx;
     this.destination = destination;
     this.inputRate = inputRate;

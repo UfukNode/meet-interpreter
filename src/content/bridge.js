@@ -95,6 +95,7 @@ function showSubtitles() {
     if (state.subtitles || !state.hello?.subtitleBar) return;
     state.subtitles = new SubtitleBar();
     state.subtitles.setEnabled(state.hello.incomingMode !== 'off');
+    state.subtitles.setOriginal(state.hello.subtitleOriginal);
   };
   if (document.body) mount();
   else document.addEventListener('DOMContentLoaded', mount, { once: true });
@@ -195,7 +196,8 @@ function onEngineMessage(msg) {
       if (msg.incomingMode) state.subtitles?.setEnabled(msg.incomingMode !== 'off');
       break;
     case 'subtitles':
-      if (state.hello) state.hello.subtitleBar = msg.show;
+      if (state.hello) Object.assign(state.hello, { subtitleBar: msg.show, subtitleOriginal: msg.original });
+      state.subtitles?.setOriginal(msg.original);
       if (msg.show) showSubtitles();
       else hideSubtitles();
       break;

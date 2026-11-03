@@ -39,13 +39,15 @@ function fakeSink() {
   };
 }
 
-function setup({ delays = {}, synthDelay = 3, echo = () => false, hang = [], stallMs } = {}) {
+function setup({ delays = {}, synthDelay = 3, echo = () => false, hang = [], stallMs, translator: given } = {}) {
   const sink = fakeSink();
   const synthCalls = [];
+  const requests = [];
   const speaker = new Speaker({
     sink,
     synth: async function* (item) {
       synthCalls.push(item.text);
+      requests.push({ text: item.text, previousText: item.previousText, nextText: item.nextText, speechEndAt: item.segment.speechEndAt });
       for (let i = 0; i < 2; i++) {
         await sleep(synthDelay);
         if (item.signal.aborted) throw new DOMException('aborted', 'AbortError');
@@ -54,7 +56,7 @@ function setup({ delays = {}, synthDelay = 3, echo = () => false, hang = [], sta
     },
   });
   const events = [];
-  const translator = fakeTranslator(delays, hang);
+  const translator = given || fakeTranslator(delays, hang);
   const pipeline = new DirectionPipeline({
     dir: 'in',
     from: 'en',
@@ -66,7 +68,7 @@ function setup({ delays = {}, synthDelay = 3, echo = () => false, hang = [], sta
     emit: (e) => events.push(e),
     stallMs,
   });
-  return { pipeline, sink, events, synthCalls, translator };
+  return { pipeline, sink, events, synthCalls, requests, translator };
 }
 
 test('speech plays in the order it was said even when a later translation finishes first', async () => {
@@ -146,4 +148,41 @@ test('history gives each translation the conversation so far', async () => {
   history.add({ id: 'c', dir: 'in', source: 'three', translation: '' });
   history.add({ id: 'd', dir: 'out', source: 'dört', translation: '' });
   assert.deepEqual(history.recent(8).map((x) => x.id), ['b', 'c', 'd']);
+});
+
+test('each piece reaches the voice with the text around it, also across segments said close together', async () => {
+  // Two pieces in one burst, the way a free service hands over a long translation.
+  const burst = {
+    async *translate({ text }) {
+      yield `${text} one.`;
+      yield `${text} two.`;
+    },
+  };
+  const { pipeline, requests } = setup({ translator: burst });
+  pipeline.onCommitted('first', { speechEndAt: 1234 });
+  await sleep(60);
+  pipeline.onCommitted('second');
+  await sleep(60);
+  assert.deepEqual(
+    requests.map(({ text, previousText, nextText }) => [text, previousText, nextText]),
+    [
+      ['first one.', '', 'first two.'],
+      ['first two.', 'first one.', ''],
+      ['second one.', 'first two.', 'second two.'],
+      ['second two.', 'second one.', ''],
+    ],
+  );
+  assert.equal(requests[0].speechEndAt, 1234);
+  assert.equal(requests[2].speechEndAt, null);
+});
+
+test('after a flush the next segment starts its intonation afresh', async () => {
+  const { pipeline, requests } = setup();
+  pipeline.onCommitted('first');
+  await sleep(80);
+  pipeline.flush();
+  pipeline.onCommitted('second');
+  await sleep(80);
+  const second = requests.find((r) => r.text === 'second one.');
+  assert.equal(second.previousText, '');
 });

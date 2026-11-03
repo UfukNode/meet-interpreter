@@ -96,10 +96,16 @@ async function claude(req, res, stats, faults, translator) {
 
 // `faults.stt`, when set to a server message type such as quota_exceeded, is sent the
 // next time audio arrives, the way Scribe ends a session for good.
+// With commit_strategy=manual it commits only when the client asks (a chunk with
+// commit: true), with an empty commit when it has heard nothing, and like Scribe it keeps
+// sending partials while the speech goes on (every second of it, the whole sentence after
+// the first); otherwise it commits by itself after about two seconds of speech, as its
+// silence detection would.
 function scribe(ws, req, stats, faults) {
   const url = new URL(req.url, 'wss://api.elevenlabs.io');
   const language = url.searchParams.get('language_code');
-  const session = { language, params: Object.fromEntries(url.searchParams), voiced: 0, chunks: 0, commits: 0, open: true };
+  const manual = url.searchParams.get('commit_strategy') === 'manual';
+  const session = { language, params: Object.fromEntries(url.searchParams), voiced: 0, chunks: 0, commits: 0, manualCommits: 0, open: true };
   stats.stt.push(session);
   ws.on('close', () => (session.open = false));
   if (url.searchParams.get('token') !== 'mock-token') {
@@ -121,10 +127,21 @@ function scribe(ws, req, stats, faults) {
     const pcm = Buffer.from(msg.audio_base_64, 'base64');
     let peak = 0;
     for (let i = 0; i + 1 < pcm.length; i += 2) peak = Math.max(peak, Math.abs(pcm.readInt16LE(i)));
-    if (peak < 300) return; // silence (or a muted microphone) is never recognized
-    session.voiced += 1;
-    if (session.voiced === 12) ws.send(JSON.stringify({ message_type: 'partial_transcript', text: text.partial }));
-    if (session.voiced >= 22) {
+    // Silence (or a muted microphone) is never recognized.
+    if (peak >= 300) {
+      session.voiced += 1;
+      if (session.voiced === 12) ws.send(JSON.stringify({ message_type: 'partial_transcript', text: text.partial }));
+      else if (manual && session.voiced > 12 && session.voiced % 10 === 2) ws.send(JSON.stringify({ message_type: 'partial_transcript', text: text.committed }));
+    }
+    if (msg.commit) {
+      session.manualCommits += 1;
+      const heard = session.voiced >= 12;
+      session.voiced = 0;
+      if (heard) session.commits += 1;
+      ws.send(JSON.stringify({ message_type: 'committed_transcript', text: heard ? text.committed : '' }));
+      return;
+    }
+    if (!manual && session.voiced >= 22) {
       session.voiced = 0;
       session.commits += 1;
       ws.send(JSON.stringify({ message_type: 'committed_transcript', text: text.committed }));
@@ -172,6 +189,9 @@ async function route(req, res, stats, faults, options = {}) {
           { voice_id: 'mock-voice-b', name: 'Mock B', category: 'premade' },
         ],
       });
+    }
+    if (req.method === 'GET' && url.pathname === '/v1/voices/settings/default') {
+      return json(res, { stability: 0.5, use_speaker_boost: true, similarity_boost: 0.75, style: 0, speed: 1 });
     }
     if (req.method === 'POST' && /^\/v1\/text-to-speech\/[^/]+\/stream$/.test(url.pathname)) return speech(req, res, url, stats, faults);
     if (req.method === 'POST' && url.pathname === '/v1/voices/add') return json(res, { voice_id: 'mock-clone', requires_verification: false });

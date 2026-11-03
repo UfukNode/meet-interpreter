@@ -1,5 +1,6 @@
 // What they say, translated, shown like film subtitles low in the Meet window: above
-// Meet's own controls, and above Meet's captions when those are on. It never takes a
+// Meet's own controls, and above Meet's captions when those are on. Only the translation
+// shows, unless the settings ask for their own words under it too. It never takes a
 // click, so Meet stays usable underneath. The panel keeps the full history.
 
 const CSS = `
@@ -18,6 +19,7 @@ const CSS = `
 }
 .line .tr { font-size: 24px; line-height: 1.3; font-weight: 500; }
 .line .src { font-size: 13px; line-height: 1.35; color: #bdc1c6; margin-top: 2px; }
+.line .src:empty { display: none; }
 .line.old { opacity: 0.6; }
 .line.old .tr { font-size: 18px; }
 @media (max-width: 760px) {
@@ -44,12 +46,19 @@ export class SubtitleBar {
     document.body.append(this.host);
     this.lines = [];
     this.enabled = true;
+    this.showOriginal = false;
     this.fadeTimer = 0;
   }
 
   setEnabled(on) {
     this.enabled = on;
     if (!on) this.clear();
+  }
+
+  // Their own words under each translation, or only the translation (the default).
+  setOriginal(on) {
+    this.showOriginal = Boolean(on);
+    for (const line of this.lines) line.src.textContent = this.showOriginal ? line.source || '' : '';
   }
 
   // Captions from the engine; only the translation of what they said is shown.
@@ -71,7 +80,8 @@ export class SubtitleBar {
       while (this.lines.length > KEEP) this.lines.shift().el.remove();
     }
     line.tr.textContent = msg.translation;
-    line.src.textContent = msg.source || '';
+    line.source = msg.source || '';
+    line.src.textContent = this.showOriginal ? line.source : '';
     this.lines.forEach((l, i) => l.el.classList.toggle('old', i < this.lines.length - 1));
     this.place();
     this.bar.classList.remove('hidden');

@@ -26,6 +26,16 @@ test('requests use low effort and no sampling parameters or prefill', () => {
   assert.equal(params.messages.at(-1).role, 'user');
 });
 
+test('Haiku and Sonnet translate without extended thinking, so the first word comes sooner', () => {
+  const haiku = buildRequest({ model: 'claude-haiku-5-5', system: 's', user: 'u' }).params;
+  assert.deepEqual(haiku.thinking, { type: 'disabled' });
+  assert.deepEqual(haiku.output_config, { effort: 'low' });
+  const sonnet = buildRequest({ model: 'claude-sonnet-5-5', system: 's', user: 'u' }).params;
+  // `between_tools` is Sonnet 5.5's lowest setting and takes no other field.
+  assert.deepEqual(sonnet.thinking, { type: 'between_tools' });
+  assert.equal(sonnet.fallbacks, 'default');
+});
+
 test('the system prompt names both languages and carries the user context', () => {
   const prompt = buildSystemPrompt({
     from: 'en',

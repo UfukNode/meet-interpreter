@@ -14,6 +14,7 @@
     "test:e2e": "node scripts/build.mjs && node test/e2e/run.mjs",
     "test:scenarios": "node scripts/build.mjs && node test/e2e/scenarios.mjs",
     "test:api": "node test/api/smoke.mjs",
+    "test:latency": "node test/api/latency.mjs",
     "test:free": "node test/api/free.mjs"
   },
   "dependencies": {

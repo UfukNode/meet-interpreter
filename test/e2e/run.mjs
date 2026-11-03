@@ -144,6 +144,12 @@ async function mockTranslationTest() {
     const start = await send(control, { type: 'start', tabId, options: { incomingMode: 'voice', outgoingMode: 'voice' } });
     check('a translation session starts', start?.ok === true, start?.error);
     if (!start?.ok) return;
+    // The far end is listened to from now on: my translated voice may come during the
+    // checks below, a sentence or two before its caption is read.
+    await meet.evaluate(() => {
+      window.__farMax = 0;
+      window.__farTimer = setInterval(() => (window.__farMax = Math.max(window.__farMax, window.__test.level())), 15);
+    });
 
     const incoming = await waitFor(async () => done((await readCaptions(meet)).incoming), 30000, 300);
     check('the counterpart is transcribed and shown in Turkish', incoming?.translation === 'Merhaba, bugün görüşmeye katıldığınız için teşekkürler.', JSON.stringify(incoming));
@@ -198,18 +204,27 @@ async function mockTranslationTest() {
     check('a normal build ignores a page request for debug copies', afterScript?.debugCopies === false, String(afterScript?.debugCopies));
     const bar = await waitFor(() => meet.evaluate(() => document.getElementById('meet-tercuman-subtitles')?.shadowRoot?.textContent || ''), 5000, 200);
     check('the translation also shows as subtitles low in the Meet window', (bar || '').includes('Merhaba, bugün görüşmeye katıldığınız için teşekkürler.'), (bar || '').slice(0, 120));
+    check('the subtitles show only the translation, not their English', !(bar || '').includes('Hi, thanks for joining'), (bar || '').slice(0, 120));
     const outgoing = await waitFor(async () => done((await readCaptions(meet)).outgoing), 30000, 300);
     check('my Turkish is transcribed and shown in English', outgoing?.translation === 'Friday at three works for us.', JSON.stringify(outgoing));
-    const heard = await maxLevel(meet, 4000);
+    const loudest = () => meet.evaluate(() => window.__farMax);
+    const heard = (await waitFor(async () => ((await loudest()) > 0.01 ? loudest() : 0), 15000, 250)) || (await loudest());
+    await meet.evaluate(() => clearInterval(window.__farTimer));
     check('the far end receives my translated voice', heard > 0.01, `level ${heard.toFixed(3)}`);
 
     const sttLanguages = stats.stt.map((s) => s.language).sort();
     check('one Scribe session per direction, in the right languages', sttLanguages.includes('en') && sttLanguages.includes('tr'), sttLanguages.join(','));
+    check(
+      'the extension closes each segment itself, with no silence detection asked of the server',
+      stats.stt.every((s) => s.params.commit_strategy === 'manual' && !('vad_silence_threshold_secs' in s.params)) && stats.stt.every((s) => s.commits === 0 || s.manualCommits > 0),
+      JSON.stringify(stats.stt.map((s) => ({ strategy: s.params.commit_strategy, commits: s.commits, asked: s.manualCommits }))),
+    );
     const ask = stats.claude[0] || {};
     check('Claude requests use Opus 5.5 at low effort with the default fallback', ask.model === 'claude-opus-5-5' && ask.effort === 'low' && ask.fallbacks === 'default' && ask.beta.includes('server-side-fallback-2026-07-01'), JSON.stringify(ask));
     const ttsIn = stats.tts.filter((t) => t.language_code === 'tr');
     const ttsOut = stats.tts.filter((t) => t.language_code === 'en');
     check('speech is requested as 24 kHz PCM in both languages', ttsIn.length > 0 && ttsOut.length > 0 && stats.tts.every((t) => t.format === 'pcm_24000'), `tr ${ttsIn.length}, en ${ttsOut.length}`);
+    check('speech uses the v4 Turbo voice model by default', stats.tts.every((t) => t.model_id === 'eleven_v4_turbo'), [...new Set(stats.tts.map((t) => t.model_id))].join(','));
     check('my translation uses my voice and theirs a different one', ttsOut[0]?.voice !== ttsIn[0]?.voice, `${ttsOut[0]?.voice} / ${ttsIn[0]?.voice}`);
 
     const status = (await sessionState(control))?.engine;
@@ -286,10 +301,18 @@ async function freeTranslationTest() {
 
     const incoming = await waitFor(async () => done((await readCaptions(meet)).incoming), 30000, 300);
     check('the counterpart is translated into Turkish by DeepL first', incoming?.translation === 'Merhaba, bugün görüşmeye katıldığınız için teşekkürler.' && stats.free[0]?.service === 'deepl', `${JSON.stringify(incoming)} ${served(0).join(',')}`);
+    await meet.evaluate(() => {
+      window.__farMax = 0;
+      window.__farTimer = setInterval(() => (window.__farMax = Math.max(window.__farMax, window.__test.level())), 15);
+    });
     const outgoing = await waitFor(async () => done((await readCaptions(meet)).outgoing), 30000, 300);
     const toEnglish = stats.free.find((r) => r.service === 'deepl' && r.target === 'EN-US');
     check('my Turkish is translated into English by DeepL', outgoing?.translation === 'Friday at three works for us.' && Boolean(toEnglish), JSON.stringify(outgoing));
-    const heard = await maxLevel(meet, 4000);
+    await sleep(4000);
+    const heard = await meet.evaluate(() => {
+      clearInterval(window.__farTimer);
+      return window.__farMax;
+    });
     check('the far end receives my translated voice', heard > 0.01, `level ${heard.toFixed(3)}`);
 
     faults.deepl = 456;

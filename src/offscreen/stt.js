@@ -24,6 +24,12 @@ const STALL_EXTRA_SECS = 2.5;
 const MIN_RECOVERED_WORDS = 3;
 // A token request that gets no answer is tried again rather than waited on forever.
 const TOKEN_TIMEOUT_MS = 8000;
+// A commit sent from here that finds nothing new is answered with an empty commit, at
+// times seconds later (measured: up to 3.7 s).
+const MANUAL_ANSWER_MS = 5000;
+// When segments are closed from here and the level never falls (noise), a partial that
+// has not changed for this long is committed: the speaker has stopped, or paused for long.
+const QUIET_COMMIT_MS = 2000;
 
 export class SttFatalError extends Error {
   constructor(type, message) {
@@ -35,13 +41,27 @@ export class SttFatalError extends Error {
 // One Scribe v2 Realtime session for one direction of the call. It reconnects on its
 // own (with a new single-use token each time) and keeps up to five seconds of audio
 // while it is reconnecting, so nothing said in the gap is lost.
+//
+// Segments end one of two ways. By default the server's own silence detection commits
+// them. With `closesSegments` the caller commits each one (commitNow, see shared/turn.js)
+// and the server detects nothing: mixing the two made recognition worse (measured
+// 4 November 2026 on a Turkish test clip: the first word of the next sentence was misheard
+// in 4 runs of 7; with the server's detection at 0.7 s alone, or with commits from here
+// alone, in none). If the server ever throttles those commits, its silence detection
+// takes over again.
 export class ScribeRealtime {
-  constructor({ name, apiKey, languageCode, vadSilenceSecs = 0.7, stallExtraSecs = STALL_EXTRA_SECS, tokenTimeoutMs = TOKEN_TIMEOUT_MS, keyterms = [], onPartial, onCommitted, onServerMessage, onStatus, onFatal, log }) {
+  // `heardSpeech`, with `closesSegments`: whether anyone spoke since the last commit.
+  // Recognition guesses a word now and then in silence ("Tamam.") and the server never
+  // commits it; a partial that stops changing is only committed after real speech.
+  constructor({ name, apiKey, languageCode, vadSilenceSecs = 0.7, closesSegments = false, heardSpeech = () => true, quietCommitMs = QUIET_COMMIT_MS, stallExtraSecs = STALL_EXTRA_SECS, tokenTimeoutMs = TOKEN_TIMEOUT_MS, keyterms = [], onPartial, onCommitted, onServerMessage, onStatus, onFatal, log }) {
     this.name = name;
     this.tokenTimeoutMs = tokenTimeoutMs;
     this.apiKey = apiKey;
     this.languageCode = languageCode;
     this.vadSilenceSecs = vadSilenceSecs;
+    this.serverSilence = !closesSegments;
+    this.heardSpeech = heardSpeech;
+    this.quietCommitMs = quietCommitMs;
     this.stallExtraSecs = stallExtraSecs;
     this.keyterms = keyterms;
     this.onPartial = onPartial;
@@ -62,6 +82,7 @@ export class ScribeRealtime {
     this.pendingCommit = false;
     this.manualCommits = true;
     this.lastForcedCommit = 0;
+    this.lastManualAt = -Infinity; // when a commit last went out from here
     this.failedBeforeStart = 0;
     this.minimal = false;
     this.generation = 0;
@@ -98,13 +119,13 @@ export class ScribeRealtime {
     }
     if (this.stopped || attempt !== this.generation) return;
 
-    const params = new URLSearchParams({
-      model_id: 'scribe_v2_realtime',
-      token,
-      audio_format: 'pcm_16000',
-      commit_strategy: 'vad',
-      vad_silence_threshold_secs: String(this.vadSilenceSecs),
-    });
+    const params = new URLSearchParams({ model_id: 'scribe_v2_realtime', token, audio_format: 'pcm_16000' });
+    if (this.serverSilence) {
+      params.set('commit_strategy', 'vad');
+      params.set('vad_silence_threshold_secs', String(this.vadSilenceSecs));
+    } else {
+      params.set('commit_strategy', 'manual');
+    }
     if (this.languageCode) params.set('language_code', this.languageCode);
     // The optional extras are dropped if the server keeps refusing the session with them.
     if (!this.minimal) {
@@ -146,7 +167,10 @@ export class ScribeRealtime {
         // The server sometimes repeats a committed segment as a partial right after it.
         if (this.echoesLastCommit(text)) return;
         if (startsNewSegment(this.partial, text)) this.closeStalledSegment();
-        if (text !== this.partial) this.watchForStall();
+        if (text !== this.partial) {
+          this.watchForStall();
+          this.watchForQuiet();
+        }
         this.partial = text;
         this.onPartial?.(this.partial);
         this.considerForcedCommit();
@@ -155,9 +179,13 @@ export class ScribeRealtime {
       case 'committed_transcript': {
         this.onServerMessage?.(msg.message_type, msg.text || '');
         const text = (msg.text || '').trim();
+        // An empty answer to a commit sent from here: the partial is already the next
+        // sentence's, so it must not be taken as this one's last words (see below).
+        if (!text && Date.now() - this.lastManualAt < MANUAL_ANSWER_MS) return;
         // The late commit of a segment already closed here: the partial is the next one's.
         if (this.takeLocalCommit(text)) return;
         clearTimeout(this.stallTimer);
+        clearTimeout(this.quietTimer);
         const pending = this.partial.trim();
         this.partial = '';
         // An empty commit right after a partial with words keeps those words.
@@ -167,7 +195,18 @@ export class ScribeRealtime {
       }
       case 'commit_throttled':
         this.manualCommits = false;
-        this.log('warn', `${this.name}: manual commits throttled, relying on silence detection only`);
+        if (this.serverSilence) {
+          this.log('warn', `${this.name}: manual commits throttled, relying on silence detection only`);
+          return;
+        }
+        // Segments were closed from here; the server's silence detection does it from now on.
+        this.serverSilence = true;
+        this.log('warn', `${this.name}: manual commits throttled, reconnecting with the server's silence detection`);
+        try {
+          this.ws?.close();
+        } catch {
+          // reconnecting anyway
+        }
         return;
       default:
         break;
@@ -201,11 +240,21 @@ export class ScribeRealtime {
     this.lastForcedCommit = Date.now();
   }
 
+  // The speaker has finished (see shared/turn.js): close the segment with the next chunk
+  // instead of waiting for the server's silence detection. It answers in about 0.25 s.
+  commitNow() {
+    if (!this.manualCommits || !this.ready || this.stopped) return false;
+    this.pendingCommit = true;
+    this.lastForcedCommit = Date.now();
+    return true;
+  }
+
   sendAudio(int16) {
     if (this.stopped) return;
     if (this.ready && this.ws && this.ws.readyState === WebSocket.OPEN) {
       const commit = this.pendingCommit;
       this.pendingCommit = false;
+      if (commit) this.lastManualAt = Date.now();
       this.ws.send(
         JSON.stringify({
           message_type: 'input_audio_chunk',
@@ -229,6 +278,16 @@ export class ScribeRealtime {
   watchForStall() {
     clearTimeout(this.stallTimer);
     this.stallTimer = setTimeout(() => this.closeStalledSegment(), (this.vadSilenceSecs + this.stallExtraSecs) * 1000);
+  }
+
+  // Segments closed from here, and noise that never lets the caller hear the silence: a
+  // partial that has stopped changing is committed (QUIET_COMMIT_MS).
+  watchForQuiet() {
+    if (this.serverSilence) return;
+    clearTimeout(this.quietTimer);
+    this.quietTimer = setTimeout(() => {
+      if (this.partial.trim() && this.heardSpeech()) this.commitNow();
+    }, this.quietCommitMs);
   }
 
   closeStalledSegment() {
@@ -295,6 +354,7 @@ export class ScribeRealtime {
     this.generation += 1;
     clearTimeout(this.timer);
     clearTimeout(this.stallTimer);
+    clearTimeout(this.quietTimer);
     const ws = this.ws;
     this.ws = null;
     this.ready = false;

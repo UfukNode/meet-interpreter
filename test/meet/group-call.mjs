@@ -19,7 +19,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { startMockApi } from '../e2e/mock-api.mjs';
-import { root, dist, out as outRoot, fixtures, sleep, elevenLabsKey, fixture, extensionIdFor, chromeTranslatorBridge, engineTarget, WATCH_CAPTIONS, transcribe } from './tools.mjs';
+import { root, dist, out as outRoot, fixtures, sleep, elevenLabsKey, fixture, extensionIdFor, chromeTranslatorBridge, engineTarget, WATCH_CAPTIONS, describeCaption, transcribe } from './tools.mjs';
 
 const T0 = Date.now();
 const log = (...args) => console.log(`[${((Date.now() - T0) / 1000).toFixed(1).padStart(5)} s]`, ...args);
@@ -209,9 +209,7 @@ try {
   console.log('\nWhat the engine did (seconds since the start):');
   for (const c of captions) {
     const when = `${(c.at / 1000).toFixed(1).padStart(5)} s  ${c.dir === 'in' ? 'they' : 'me  '}`;
-    if (c.phase === 'committed') console.log(`${when}  heard       ${c.source}`);
-    else if (c.phase === 'translated') console.log(`${when}  translated  ${c.translation}  (${c.translateMs} ms)`);
-    else if (!c.phase.startsWith('via-')) console.log(`${when}  ${c.phase.padEnd(11)} ${c.error || c.source || ''}`);
+    if (!c.phase.startsWith('via-')) console.log(`${when}  ${describeCaption(c)}`);
   }
   const heard = captions.filter((c) => c.phase === 'committed');
   const theirs = heard.filter((c) => c.dir === 'in').map((c) => c.source).join(' ');

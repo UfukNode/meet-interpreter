@@ -10,10 +10,11 @@
 // tab's content script opens.
 
 import { isFreeTranslation, missingKeys, parseKeyterms } from '../shared/settings.js';
-import { listVoices, createVoiceClone, deleteVoice, describeElevenLabsError } from '../shared/elevenlabs.js';
+import { listVoices, createVoiceClone, deleteVoice, describeElevenLabsError, warmConnection } from '../shared/elevenlabs.js';
 import { PcmScheduler, testChime } from '../shared/scheduler.js';
 import { int16ToBase64 } from '../shared/pcm.js';
 import { EchoGuard, EarlySentences, isOnlyPunctuation } from '../shared/text.js';
+import { TurnEnd } from '../shared/turn.js';
 import { Usage } from '../shared/usage.js';
 import { ScribeRealtime } from './stt.js';
 import { Translator, describeClaudeError } from './translator.js';
@@ -67,6 +68,9 @@ function describeSttFatal(err, cause) {
 
 const MUTE_IDLE_MS = 20000;
 const START_TIMEOUT_MS = 20000;
+// A connection to ElevenLabs that sat unused this long may be closed; opening a new one
+// costs the first sentence about 0.2 s, so speech starting after it opens one first.
+const WARM_AFTER_MS = 30000;
 // After the call has been joined, this long without a connected call (left, or kicked
 // out) ends the translation, so nothing keeps listening and billing on Meet's goodbye
 // screen. Long enough for a reload and a click on Join to bring the call back.
@@ -148,6 +152,7 @@ class Session {
     this.tabPort = null;
     this.page = { muted: true, senders: 0, micLabel: '', ctxState: 'unknown', backlog: 0, playing: false };
     this.levels = { tab: 0, mic: 0 };
+    this.lastSpeechRequestAt = 0;
     this.stt = { in: 'off', out: 'off' };
     this.usage = new Usage();
     this.latencies = [];
@@ -289,6 +294,7 @@ class Session {
 
     this.history = new History(12);
     this.early = { in: new EarlySentences(), out: new EarlySentences() };
+    this.turns = this.createTurns();
     this.sentGuard = new EchoGuard(); // my translated voice, in their language
     this.playedGuard = new EchoGuard(); // their translated voice, in my language
 
@@ -391,6 +397,9 @@ class Session {
       name: dir === 'in' ? 'stt-in' : 'stt-out',
       apiKey: this.settings.elevenLabsKey,
       languageCode,
+      // Each segment is closed from here when its speaker finishes (see watchTurn).
+      closesSegments: true,
+      heardSpeech: () => this.turns?.[dir].heardSpeech() ?? true,
       vadSilenceSecs: this.settings.vadSilenceSecs,
       keyterms,
       onPartial: (text) => this.onPartial(dir, text),
@@ -406,6 +415,15 @@ class Session {
     });
   }
 
+  // Each side's audio level tells when that speaker finished (see shared/turn.js).
+  createTurns() {
+    const holdSecs = this.settings.vadSilenceSecs;
+    return {
+      in: new TurnEnd({ holdSecs, language: this.settings.theirLanguage }),
+      out: new TurnEnd({ holdSecs, language: this.settings.myLanguage }),
+    };
+  }
+
   restartStt() {
     if (this.stopped) return;
     const keyterms = parseKeyterms(this.settings.keyterms);
@@ -413,6 +431,7 @@ class Session {
     this.sttOut.stop();
     this.early.in.reset();
     this.early.out.reset();
+    this.turns = this.createTurns();
     this.sttIn = this.createStt('in', this.settings.theirLanguage, keyterms);
     this.sttOut = this.createStt('out', this.settings.myLanguage, keyterms);
     this.ensureStt('in', this.incomingMode !== 'off');
@@ -437,6 +456,7 @@ class Session {
     this.levels.tab = Math.max(m.rms, this.levels.tab * 0.7);
     if (m.raw && this.collector) this.collectClone(m.raw, m.rawRate, m.rms);
     if (!this.sttIn || this.sttIn.stopped) return;
+    this.watchTurn('in', m.rms);
     this.sttIn.sendAudio(m.pcm);
     this.debugSink?.pcm('in', m.pcm);
     this.usage.addStt(0.1);
@@ -447,9 +467,25 @@ class Session {
     if (!this.sttOut || this.sttOut.stopped) return;
     const open = this.canSendOutgoing() && !(this.settings.halfDuplex && this.localPlayer.playing);
     const pcm = open ? m.pcm : new Int16Array(m.pcm.length);
+    this.watchTurn('out', open ? m.rms : 0);
     this.sttOut.sendAudio(pcm);
     this.debugSink?.pcm('out', pcm);
     this.usage.addStt(0.1);
+  }
+
+  // A finished turn is committed at once rather than after recognition's own silence
+  // detection, and speech starting again makes sure the voice's connection is open.
+  watchTurn(dir, rms) {
+    const turn = this.turns?.[dir].level(rms);
+    if (turn === 'commit') (dir === 'in' ? this.sttIn : this.sttOut).commitNow();
+    else if (turn === 'speech') this.warmSpeech();
+  }
+
+  warmSpeech() {
+    const now = Date.now();
+    if (now - this.lastSpeechRequestAt < WARM_AFTER_MS) return;
+    this.lastSpeechRequestAt = now;
+    warmConnection();
   }
 
   // Finished sentences go to translation while the speaker is still talking (see
@@ -457,6 +493,7 @@ class Session {
   onPartial(dir, text) {
     this.debugSink?.event({ kind: 'partial', dir, text });
     if (dir === 'out' && !this.canSendOutgoing()) return;
+    if (this.turns?.[dir].partial(text) === 'commit') (dir === 'in' ? this.sttIn : this.sttOut).commitNow();
     const early = this.early?.[dir];
     const ready = early?.partial(text);
     if (ready) this.translateSegment(dir, ready);
@@ -465,16 +502,17 @@ class Session {
 
   onCommitted(dir, text) {
     this.debugSink?.event({ kind: 'committed', dir, text });
+    const speechEndAt = this.turns?.[dir].committed();
     if (dir === 'out' && !this.canSendOutgoing()) {
       this.early?.out.reset();
       return;
     }
     const rest = this.early ? this.early[dir].committed(text) : text;
-    if (rest && !isOnlyPunctuation(rest)) this.translateSegment(dir, rest);
+    if (rest && !isOnlyPunctuation(rest)) this.translateSegment(dir, rest, speechEndAt);
   }
 
-  translateSegment(dir, text) {
-    (dir === 'in' ? this.incoming : this.outgoing)?.onCommitted(text);
+  translateSegment(dir, text, speechEndAt) {
+    (dir === 'in' ? this.incoming : this.outgoing)?.onCommitted(text, { speechEndAt });
   }
 
   speak(item, dir) {
@@ -485,6 +523,7 @@ class Session {
     const backlog = (dir === 'in' ? this.localPlayer.backlog() : this.page.backlog) + queued;
     const speed = backlog > 5 ? 1.2 : backlog > 2.5 ? 1.1 : 1;
     this.usage.addTts(item.text.length, s.ttsModel);
+    this.lastSpeechRequestAt = Date.now();
     return synthesize({
       apiKey: s.elevenLabsKey,
       voiceId,
@@ -493,6 +532,7 @@ class Session {
       languageCode: dir === 'in' ? s.myLanguage : s.theirLanguage,
       voiceSettings: { stability: s.stability, similarity_boost: s.similarity, speed },
       previousText: item.previousText,
+      nextText: item.nextText,
       signal: item.signal,
     });
   }
@@ -527,14 +567,17 @@ class Session {
     };
   }
 
+  // The delay shown in the panel runs from the end of the speech, when that is known,
+  // to the first sound of its translation.
   onFirstAudio(item) {
     const segment = item.segment;
     if (segment.firstAudioAt) return;
     segment.firstAudioAt = performance.now();
-    const ms = Math.round(segment.firstAudioAt - segment.committedAt);
-    this.latencies.push(ms);
+    const afterCommit = Math.round(segment.firstAudioAt - segment.committedAt);
+    const afterSpeech = segment.speechEndAt ? Math.round(segment.firstAudioAt - segment.speechEndAt) : null;
+    this.latencies.push(afterSpeech ?? afterCommit);
     if (this.latencies.length > 8) this.latencies.shift();
-    log('info', `${segment.id} first audio ${ms} ms after commit`);
+    log('info', `${segment.id} first audio ${afterCommit} ms after commit${afterSpeech === null ? '' : `, ${afterSpeech} ms after the speech ended`}`);
   }
 
   // The translation stays readable; the line only says it could not be spoken.
@@ -587,6 +630,7 @@ class Session {
       outgoingMode: this.outgoingMode,
       offerClone: this.settings.offerTheirClone && !this.diagnostic,
       subtitleBar: this.settings.subtitleBar && !this.diagnostic,
+      subtitleOriginal: this.settings.subtitleOriginal,
       cloneConsent: this.cloneConsent,
     });
     this.syncPageActivation();
@@ -665,6 +709,10 @@ class Session {
   onOutgoingClosed() {
     this.outgoing?.flush();
     this.early?.out.reset();
+    this.turns?.out.reset();
+    // Close what was said before the mute now, while it is dropped; left open, it would
+    // join the first sentence after the mute and reach them.
+    this.sttOut?.commitNow();
     // Words still on the live line were never sent; they would stay there until I spoke again.
     this.caption('out', { phase: 'partial', source: '' });
     clearTimeout(this.muteTimer);
@@ -758,7 +806,9 @@ class Session {
     if (next.outputDeviceLabel !== prev.outputDeviceLabel) this.applyOutputDevice();
     if (next.micDeviceLabel !== prev.micDeviceLabel) this.openMic().catch((err) => log('warn', 'microphone switch', err));
     if (next.showOverlay !== prev.showOverlay) this.postTab({ type: 'overlay', show: next.showOverlay });
-    if (next.subtitleBar !== prev.subtitleBar) this.postTab({ type: 'subtitles', show: next.subtitleBar && !this.diagnostic });
+    if (next.subtitleBar !== prev.subtitleBar || next.subtitleOriginal !== prev.subtitleOriginal) {
+      this.postTab({ type: 'subtitles', show: next.subtitleBar && !this.diagnostic, original: next.subtitleOriginal });
+    }
     this.report();
   }
 

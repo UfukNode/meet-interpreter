@@ -53,7 +53,9 @@ import { base64ToInt16 } from '../shared/pcm.js';
     const gain = ctx.createGain();
     gain.connect(destination);
     const track = destination.stream.getAudioTracks()[0];
-    const player = new PcmScheduler(ctx, gain, { onPlayingChange: () => schedulePost() });
+    // Meet's page can be busy for a moment when a chunk arrives, so the wait before a
+    // sentence starts is a little longer here than in the extension's own player.
+    const player = new PcmScheduler(ctx, gain, { prebufferSec: 0.08, onPlayingChange: () => schedulePost() });
     audio = { ctx, track, player };
     resumeAudio();
     return audio;

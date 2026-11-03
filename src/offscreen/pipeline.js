@@ -34,6 +34,11 @@ export class AsyncQueue {
     for (const waiter of this.waiters.splice(0)) waiter.reject(error);
   }
 
+  // The next item if it is already here, without taking it.
+  peek() {
+    return this.items[0];
+  }
+
   [Symbol.asyncIterator]() {
     return {
       next: () => {
@@ -72,9 +77,14 @@ function isAbortError(err) {
   return err?.name === 'AbortError' || err?.constructor?.name === 'APIUserAbortError';
 }
 
+const nextTask = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 // A translation that sends nothing more for this long is given up (a TimeoutError), so
 // the speech queued after it can go on.
 const TRANSLATION_STALL_MS = 15000;
+// The voice reads a new segment as the continuation of the last thing this side said,
+// when that was this recent, so the tone carries on instead of starting over.
+const CONTINUES_WITHIN_MS = 10000;
 
 // Plays speech items strictly in order, fetching ahead while earlier items play.
 export class Speaker {
@@ -172,6 +182,7 @@ export class DirectionPipeline {
     this.generation = 0;
     this.chain = Promise.resolve();
     this.live = new Set();
+    this.lastSpoken = null;
   }
 
   // 'voice': translate and speak; 'text': translate for the subtitles only; 'off': ignore.
@@ -183,7 +194,8 @@ export class DirectionPipeline {
     else if (previous === 'voice') this.silence();
   }
 
-  onCommitted(text) {
+  // `speechEndAt`: when the speaker stopped (performance.now()), if that is known.
+  onCommitted(text, { speechEndAt = null } = {}) {
     if (this.mode === 'off') return;
     if (this.echoGuard?.isEcho(text)) {
       this.emit({ phase: 'echo', source: text });
@@ -194,6 +206,7 @@ export class DirectionPipeline {
       source: text,
       translation: '',
       committedAt: performance.now(),
+      speechEndAt,
       controller: new AbortController(),
       sentences: new AsyncQueue(),
     };
@@ -248,20 +261,29 @@ export class DirectionPipeline {
     }
   }
 
+  // Each piece goes to the voice with the text around it (what was just said, and the next
+  // piece when it is already known), which keeps the intonation flowing between requests.
   async queueSpeech(segment) {
-    let previousText = '';
+    const last = this.lastSpoken;
+    let previousText = last && performance.now() - last.at < CONTINUES_WITHIN_MS ? last.text : '';
     for await (const text of segment.sentences) {
       if (segment.controller.signal.aborted) return;
       // In subtitle mode the sentences are only drained; no speech is requested or billed.
       if (this.mode !== 'voice') continue;
-      this.speaker.enqueue({ segment, text, previousText });
+      // Pieces that came in one burst are all queued a moment later; a streamed one is not.
+      if (!segment.sentences.closed && segment.sentences.peek() === undefined) await nextTask();
+      if (segment.controller.signal.aborted) return;
+      if (this.mode !== 'voice') continue;
+      this.speaker.enqueue({ segment, text, previousText, nextText: segment.sentences.peek() || '' });
       previousText = text;
+      this.lastSpoken = { text, at: performance.now() };
     }
   }
 
   // Stops speech that is queued or playing but keeps translating (switch to subtitles).
   silence() {
     this.speaker.cancelAll();
+    this.lastSpoken = null;
   }
 
   // Drops everything not yet heard: used on mute, on stop and when a direction is turned off.
@@ -270,5 +292,6 @@ export class DirectionPipeline {
     for (const segment of this.live) segment.controller.abort();
     this.live.clear();
     this.speaker.cancelAll();
+    this.lastSpoken = null;
   }
 }

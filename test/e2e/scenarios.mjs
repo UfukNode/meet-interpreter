@@ -157,6 +157,13 @@ async function callScenarios() {
     await setSettings(control, { subtitleBar: true });
     const shown = await waitFor(async () => (await subtitleText(meet))?.includes(THANKS), 30000, 300);
     check('turning it back on brings the subtitles back', shown);
+    check('the subtitles show only the translation, not their English', !(await subtitleText(meet))?.includes('Hi, thanks for joining'));
+    await setSettings(control, { subtitleOriginal: true });
+    const withOriginal = await waitFor(async () => (await subtitleText(meet))?.includes('Hi, thanks for joining'), 30000, 300);
+    check('asking for the original mid-call shows their English under the subtitles', withOriginal);
+    await setSettings(control, { subtitleOriginal: false });
+    const without = await waitFor(async () => !(await subtitleText(meet))?.includes('Hi, thanks for joining'), 4000, 200);
+    check('turning that off again leaves only the translation', without);
 
     // The panel goes where it is dragged and stays there after a reload.
     const before = await panel(meet);

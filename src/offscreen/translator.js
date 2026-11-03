@@ -7,6 +7,15 @@ import { t } from '../shared/i18n.js';
 // has no server-side fallback, so its requests go without the parameter.
 const SERVER_FALLBACK_MODELS = new Set(['claude-opus-5-5', 'claude-sonnet-5-5']);
 
+// Interpreting one utterance needs no extended thinking, and thinking only holds back the
+// first word. Claude Haiku 5.5 can turn it off (at effort high or below), Claude Sonnet 5.5
+// has `between_tools` as its lowest setting (no other field may go with it), and Claude
+// Opus 5.5 always thinks, so it runs at the lowest effort only.
+const THINKING_OFF = {
+  'claude-haiku-5-5': { type: 'disabled' },
+  'claude-sonnet-5-5': { type: 'between_tools' },
+};
+
 export class TranslationRefusedError extends Error {
   constructor(details) {
     super(t('claude.refused'));
@@ -70,6 +79,7 @@ export function buildRequest({ model, system, user }) {
     system,
     messages: [{ role: 'user', content: user }],
   };
+  if (THINKING_OFF[model]) params.thinking = THINKING_OFF[model];
   if (SERVER_FALLBACK_MODELS.has(model)) {
     return { beta: true, params: { ...params, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' } };
   }

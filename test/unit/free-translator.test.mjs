@@ -10,6 +10,8 @@ import {
   deeplBase,
   deeplCodes,
   deeplContext,
+  speakable,
+  ONE_PIECE_CHARS,
 } from '../../src/offscreen/free-translator.js';
 import { localTranslationState, prepareLocalTranslation } from '../../src/shared/local-translation.js';
 import { setLanguage } from '../../src/shared/i18n.js';
@@ -83,11 +85,11 @@ test('the chain runs from the best service down and ends on Chrome', () => {
   assert.equal(FREE_STEPS.at(-1).key, undefined);
 });
 
-test('DeepL is used first and its answer is split into speakable sentences', async () => {
+test('DeepL is used first and its short answer goes to the voice in one piece', async () => {
   const net = fakeFetch({ 'api-free.deepl.com': deeplOk });
   const t = translator({ fetchImpl: net.fetchImpl, local: fakeLocal() });
   const pieces = await collect(t.translate(job));
-  assert.deepEqual(pieces, ['DeepL çevirisi.', 'İkinci cümle.']);
+  assert.deepEqual(pieces, ['DeepL çevirisi. İkinci cümle.']);
   const call = net.calls[0];
   assert.equal(call.pathname, '/v2/translate');
   assert.equal(call.headers.Authorization, 'DeepL-Auth-Key dl:fx');
@@ -96,6 +98,17 @@ test('DeepL is used first and its answer is split into speakable sentences', asy
   assert.equal(call.body.target_lang, 'TR');
   assert.equal(call.body.model_type, 'prefer_quality_optimized');
   assert.match(call.body.context, /Launch call\.\nHello there\./);
+});
+
+test('a long translation is cut into sentences so the first is heard while the rest are made', () => {
+  const sentence = 'Bu cümle konuşmanın uzun bir bölümünü çeviriyor ve sese parça parça gidiyor.';
+  const long = Array.from({ length: 5 }, () => sentence).join(' ');
+  assert.ok(long.length > ONE_PIECE_CHARS);
+  const pieces = [...speakable(long)];
+  assert.equal(pieces.length, 5);
+  assert.ok(pieces.every((p) => p === sentence));
+  assert.deepEqual([...speakable('  Tamam.  ')], ['Tamam.']);
+  assert.deepEqual([...speakable(' ... ')], []);
 });
 
 test('services without a key are skipped', async () => {
@@ -172,7 +185,7 @@ test('a language DeepL refuses is skipped for that pair only', async () => {
   const before = net.calls.length;
   await collect(t.translate({ ...job, from: 'hi' }));
   assert.equal(net.calls.length, before);
-  assert.deepEqual(await collect(t.translate(job)), ['DeepL çevirisi.', 'İkinci cümle.']);
+  assert.deepEqual(await collect(t.translate(job)), ['DeepL çevirisi. İkinci cümle.']);
 });
 
 test('if DeepL refuses the model field, plain requests are sent from then on', async () => {
@@ -180,7 +193,7 @@ test('if DeepL refuses the model field, plain requests are sent from then on', a
     'api-free.deepl.com': ({ body }) => (body.model_type ? reply(400, { message: 'model_type not allowed' }) : deeplOk({ pathname: '/v2/translate' })),
   });
   const t = translator({ keys: { deeplKey: 'dl:fx' }, fetchImpl: net.fetchImpl, local: fakeLocal() });
-  assert.deepEqual(await collect(t.translate(job)), ['DeepL çevirisi.', 'İkinci cümle.']);
+  assert.deepEqual(await collect(t.translate(job)), ['DeepL çevirisi. İkinci cümle.']);
   await collect(t.translate(job));
   assert.deepEqual(
     net.calls.map((c) => Boolean(c.body.model_type)),

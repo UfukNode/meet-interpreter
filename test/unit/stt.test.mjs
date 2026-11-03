@@ -251,3 +251,78 @@ test('a stop and a new start while the token is on its way open one connection, 
   assert.equal(FakeSocket.all.length, 1);
   stt.stop();
 });
+
+test('a commit asked for here goes out with the next chunk, once', async () => {
+  const { stt } = await started({ stallExtraSecs: 5 });
+  assert.equal(stt.commitNow(), true);
+  stt.sendAudio(new Int16Array([1, 2]));
+  stt.sendAudio(new Int16Array([3, 4]));
+  assert.deepEqual(last().sent.map((m) => m.commit), [true, false]);
+  stt.stop();
+  assert.equal(stt.commitNow(), false);
+});
+
+test('a commit cannot be asked for before the session has started', async () => {
+  const { stt } = client();
+  stt.start();
+  await tick();
+  assert.equal(stt.commitNow(), false);
+  stt.stop();
+});
+
+test('an empty answer to a commit sent from here leaves the next sentence alone', async () => {
+  const { stt, seen } = await started({ stallExtraSecs: 5 });
+  stt.commitNow();
+  stt.sendAudio(new Int16Array([1, 2]));
+  // The server had closed the segment itself; the next sentence has begun.
+  last().emit({ message_type: 'partial_transcript', text: 'We need the final numbers' });
+  last().emit({ message_type: 'committed_transcript', text: '' });
+  assert.deepEqual(seen.committed, []);
+  last().emit({ message_type: 'committed_transcript', text: 'We need the final numbers by Friday.' });
+  assert.deepEqual(seen.committed, ['We need the final numbers by Friday.']);
+  stt.stop();
+});
+
+test('when segments are closed here, the server is asked for no silence detection', async () => {
+  const { stt } = client({ closesSegments: true });
+  stt.start();
+  await tick();
+  const params = last().url.searchParams;
+  assert.equal(params.get('commit_strategy'), 'manual');
+  assert.equal(params.get('vad_silence_threshold_secs'), null);
+  stt.stop();
+});
+
+test('a partial that stops changing is committed when segments are closed here', async () => {
+  const { stt } = await started({ closesSegments: true, quietCommitMs: 30, stallExtraSecs: 5 });
+  last().emit({ message_type: 'partial_transcript', text: 'Toplantı saat üçte' });
+  await tick(15);
+  last().emit({ message_type: 'partial_transcript', text: 'Toplantı saat üçte başlıyor' });
+  await tick(20);
+  stt.sendAudio(new Int16Array([1]));
+  assert.equal(last().sent.at(-1).commit, false); // it changed 20 ms ago
+  await tick(30);
+  stt.sendAudio(new Int16Array([2]));
+  assert.equal(last().sent.at(-1).commit, true);
+  stt.stop();
+});
+
+test('throttled commits hand the segments back to the server, over a new connection', async () => {
+  const { stt } = await started({ closesSegments: true, stallExtraSecs: 5 });
+  const first = last();
+  first.emit({ message_type: 'commit_throttled', error: 'too many commits' });
+  await tick(600);
+  assert.notEqual(last(), first);
+  assert.equal(last().url.searchParams.get('commit_strategy'), 'vad');
+  assert.equal(stt.commitNow(), false);
+  stt.stop();
+});
+
+test('a word guessed in silence is never committed for being quiet', async () => {
+  const { stt } = await started({ closesSegments: true, quietCommitMs: 20, stallExtraSecs: 5, heardSpeech: () => false });
+  last().emit({ message_type: 'partial_transcript', text: 'Tamam.' });
+  await tick(50);
+  stt.sendAudio(new Int16Array([1]));
+  assert.equal(last().sent.at(-1).commit, false);
+  stt.stop();
+});

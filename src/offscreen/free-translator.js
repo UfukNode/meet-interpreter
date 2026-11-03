@@ -179,7 +179,18 @@ export function matchCase(source, translation, language) {
   return translation.slice(0, i) + translation[i].toLocaleUpperCase(language) + translation.slice(i + 1);
 }
 
-function* speakable(text) {
+// The free services answer with the whole translation at once. A short one goes to the
+// voice in one piece, so its sentences flow into each other as one person would say them;
+// the voice starts just as fast (about 0.2 s for one sentence or three). A long one is
+// cut into sentences, so the first is heard while the rest are made.
+export const ONE_PIECE_CHARS = 300;
+
+export function* speakable(text) {
+  const whole = String(text).trim();
+  if (whole.length <= ONE_PIECE_CHARS) {
+    if (whole && !isOnlyPunctuation(whole)) yield whole;
+    return;
+  }
   const splitter = new SentenceSplitter();
   for (const piece of splitter.push(text)) {
     if (!isOnlyPunctuation(piece)) yield piece;

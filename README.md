@@ -29,7 +29,7 @@ Any two of 20 languages, both ways. They speak English and you hear Turkish; you
 - Your translated voice goes into the call in place of your microphone. Meet keeps working as usual, and muting in Meet stops everything that would reach the call.
 - A mode for each direction: spoken translation, subtitles only (no speech credits used) or off, switchable mid-call from the popup or the panel on the page.
 - In voice mode you hear only the translation; their own voice is muted. In subtitles-only mode and with translation off you hear them normally.
-- Subtitles like a film's, low in the Meet window above Meet's controls: only the translation, in large type, unless the settings ask for their own words under it. They move above Meet's own captions when those are on, and never take a click.
+- Subtitles like a film's, low in the Meet window above Meet's controls: only the translation, in large type, unless the settings ask for their own words under it. While they are still talking, a dimmed draft of their words so far, translated on your computer by Chrome's own translator (free, whichever translation the call uses), stands where the sentence's translation will come. Each line stays long enough to read, at most two at a time. They move above Meet's own captions when those are on, and never take a click.
 - Your own voice clone, recorded on the settings page. The other person's voice is cloned only after you confirm they agreed, and the clone is deleted when the call ends.
 - A panel with both sides' subtitles, the mode switches, the live delay and a usage counter with an estimated cost. It starts as a small button low on the left of the Meet window, opens with a click and can be dragged anywhere. A mark on the button shows when there is a warning to read.
 - Optional call recording: the Meet tab's picture with both sides' audio, saved as MP4 on this computer only.
@@ -39,7 +39,7 @@ Any two of 20 languages, both ways. They speak English and you hear Turkish; you
 
 > **Read this first.**
 > - The translated voice starts about 1.2 s after a sentence ends (measured with the real services, Meet's own delay on top; 1.5 s before version 1.1). Most of it is the wait for silence: the extension watches the sound level itself and closes a sentence after 0.7 s of silence, or sooner when the words so far read as a finished sentence. Speech recognition's own silence detection answered about 0.4 s later, so it is not used. In a long turn, finished sentences are translated while the speaker keeps going. Settings can shorten the wait to 0.5 s (about 1 s in all), at the cost of a long sentence being split now and then.
-> - Free translation through Chrome's built-in translator is literal: "saat üç" comes out as "15.00 on Friday". Claude gives natural sentences.
+> - Free translation through Chrome's built-in translator is literal: "saat üç" comes out as "15.00 on Friday". Everyday meeting phrases are put in plain words first, but a free DeepL key or Claude gives natural sentences.
 > - Two Meet participants on the same computer garble each other's audio, because Meet's adaptive audio and Chrome's echo cancellation treat them as one room. Test with a second device or a second person.
 > - Tested in real Meet calls with two and three participants, and automatically in Chromium against a mock Meet call. Meet's page changes over time, so try a call before an important meeting.
 > - Group calls work: in a test call with three English speakers taking turns (the real speech services, a stand-in Meet page) each one was translated in order. Every remote voice comes through one translation voice, and when two people talk at the same time usually only one of them is caught.
@@ -62,6 +62,7 @@ your microphone -> Scribe (your language)  -> Claude or free -> ElevenLabs -> th
 | `src/offscreen/engine.js` | Offscreen document | Tab capture, microphone, speech recognition, translation, speech, voice clone, recording |
 | `src/offscreen/stt.js` | Offscreen document | Scribe v2 Realtime client: reconnects, keeps audio while reconnecting, recovers a segment the server never commits |
 | `src/shared/turn.js` | Offscreen document | Hears from the sound level when a speaker has finished, so each sentence is closed at once |
+| `src/offscreen/drafts.js` | Offscreen document | Their words so far, translated on this computer while they talk, for the subtitle drafts |
 | `src/offscreen/free-translator.js` | Offscreen document | Free translation: tries free services from the best down |
 | `src/background/service-worker.js` | Service worker | Starts and stops sessions, keeps state for the popup |
 
@@ -80,6 +81,7 @@ Choose **Free** as the translation model in the settings and no Anthropic key is
 | 5 | Chrome's built-in translator | No limit, runs on your computer | Chrome 138 or newer on desktop |
 
 - With no keys at all, Chrome's translator does the work. Its language packs download once, after a click: the settings page has a button for it, and the popup's Start button does it too.
+- Chrome's translator takes everyday meeting talk word for word ("Let's touch base on Monday" came out as "Pazartesi günü üsse dokunalım", "Sesim geliyor mu?" as "Is my voice coming?"), so such phrases are put in plainer words of the same language before it translates (`src/shared/plain.js`, English and Turkish, each rewrite checked through Chrome's translator), and the special terms from the settings come back spelled as written. A free DeepL key still gives much more natural sentences.
 - Keys are optional and belong to each person, because free quotas are per account. A key built into the extension could be copied out of it, and everyone would share one quota.
 - Gemini is left out: on its free tier Google may use what you send to improve its products, and people may read it.
 - Speech recognition and speech still use ElevenLabs, so an ElevenLabs key is always needed.

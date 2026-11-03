@@ -9,7 +9,7 @@ Any two of 20 languages, both ways. They speak English and you hear Turkish; you
 <table>
   <tr><td><b>Languages</b></td><td>20, any two of them; English and Turkish by default</td></tr>
   <tr><td><b>Modes</b></td><td>Voice, subtitles only or off, for each direction</td></tr>
-  <tr><td><b>Delay</b></td><td>About 1.5 s after each sentence, measured in a real call</td></tr>
+  <tr><td><b>Delay</b></td><td>About 1.2 s after each sentence, measured with the real services; Meet's own delay comes on top</td></tr>
   <tr><td><b>Backend</b></td><td>None</td></tr>
   <tr><td><b>Interface</b></td><td>English or Turkish</td></tr>
 </table>
@@ -25,11 +25,11 @@ Any two of 20 languages, both ways. They speak English and you hear Turkish; you
 ## Features
 
 - Twenty languages, any two of them in either direction: English, Turkish, German, French, Spanish, Italian, Portuguese, Dutch, Polish, Russian, Ukrainian, Arabic, Greek, Romanian, Swedish, Indonesian, Hindi, Chinese, Japanese and Korean.
-- Listens to the call through Chrome tab capture and to you through your microphone, transcribes both sides with ElevenLabs Scribe v2 Realtime, translates with Claude (or for free, see below) and speaks the result with ElevenLabs text to speech.
+- Listens to the call through Chrome tab capture and to you through your microphone, transcribes both sides with ElevenLabs Scribe v2 Realtime, translates with Claude (or for free, see below) and speaks the result with ElevenLabs v4 Turbo, which keeps a natural pace and starts as fast as the older Flash v2.5. Each sentence goes to the voice with the one before it (and after it, when known), so the intonation carries on between sentences.
 - Your translated voice goes into the call in place of your microphone. Meet keeps working as usual, and muting in Meet stops everything that would reach the call.
 - A mode for each direction: spoken translation, subtitles only (no speech credits used) or off, switchable mid-call from the popup or the panel on the page.
 - In voice mode you hear only the translation; their own voice is muted. In subtitles-only mode and with translation off you hear them normally.
-- Subtitles like a film's, low in the Meet window above Meet's controls: the translation in large type with the original under it. They move above Meet's own captions when those are on, and never take a click.
+- Subtitles like a film's, low in the Meet window above Meet's controls: only the translation, in large type, unless the settings ask for their own words under it. They move above Meet's own captions when those are on, and never take a click.
 - Your own voice clone, recorded on the settings page. The other person's voice is cloned only after you confirm they agreed, and the clone is deleted when the call ends.
 - A panel with both sides' subtitles, the mode switches, the live delay and a usage counter with an estimated cost. It starts as a small button low on the left of the Meet window, opens with a click and can be dragged anywhere. A mark on the button shows when there is a warning to read.
 - Optional call recording: the Meet tab's picture with both sides' audio, saved as MP4 on this computer only.
@@ -38,7 +38,7 @@ Any two of 20 languages, both ways. They speak English and you hear Turkish; you
 - Settings changed mid-call apply at once, the call languages included. A service that stops answering is given up after a few seconds, so one stuck sentence never holds up the ones after it.
 
 > **Read this first.**
-> - The translated voice starts about 1.5 s after the other person finishes a sentence. 0.7 s of that is speech recognition waiting for silence to know the sentence ended. In a long turn, finished sentences are translated while the speaker keeps going. Settings can shorten the wait to 0.5 s, at the cost of a long sentence being split now and then.
+> - The translated voice starts about 1.2 s after a sentence ends (measured with the real services, Meet's own delay on top; 1.5 s before version 1.1). Most of it is the wait for silence: the extension watches the sound level itself and closes a sentence after 0.7 s of silence, or sooner when the words so far read as a finished sentence. Speech recognition's own silence detection answered about 0.4 s later, so it is not used. In a long turn, finished sentences are translated while the speaker keeps going. Settings can shorten the wait to 0.5 s (about 1 s in all), at the cost of a long sentence being split now and then.
 > - Free translation through Chrome's built-in translator is literal: "saat üç" comes out as "15.00 on Friday". Claude gives natural sentences.
 > - Two Meet participants on the same computer garble each other's audio, because Meet's adaptive audio and Chrome's echo cancellation treat them as one room. Test with a second device or a second person.
 > - Tested in real Meet calls with two and three participants, and automatically in Chromium against a mock Meet call. Meet's page changes over time, so try a call before an important meeting.
@@ -61,6 +61,7 @@ your microphone -> Scribe (your language)  -> Claude or free -> ElevenLabs -> th
 | `src/content/subtitle-bar.js` | Content script | The subtitles low in the Meet window |
 | `src/offscreen/engine.js` | Offscreen document | Tab capture, microphone, speech recognition, translation, speech, voice clone, recording |
 | `src/offscreen/stt.js` | Offscreen document | Scribe v2 Realtime client: reconnects, keeps audio while reconnecting, recovers a segment the server never commits |
+| `src/shared/turn.js` | Offscreen document | Hears from the sound level when a speaker has finished, so each sentence is closed at once |
 | `src/offscreen/free-translator.js` | Offscreen document | Free translation: tries free services from the best down |
 | `src/background/service-worker.js` | Service worker | Starts and stops sessions, keeps state for the popup |
 
@@ -134,6 +135,7 @@ npm test            # unit tests: audio, sentences, echo guard, ordering, speech
 npm run test:e2e    # builds, loads the extension into Chromium and drives a mock Meet call
 npm run test:scenarios   # the same mock call through restarts, a reload, failures, settings changes and leaving
 npm run test:api    # live check of every API with latency numbers (keys in .env)
+npm run test:latency     # end of a sentence to its first translated sound, with the real ElevenLabs
 npm run test:free   # live check of DeepL, Mistral and Groq free plans (their keys in .env)
 node test/meet/mock-call-demo.mjs   # both directions with the real ElevenLabs, recorded by the extension
 node test/meet/group-call.mjs       # a four-person call with the real ElevenLabs and Chrome's translator
